@@ -5,7 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Comanda</title>
 <script src="config.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="supabase.js"></script>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0f766e">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Comanda">
 <style>
 :root{--bg:#f6f5f2;--card:#fff;--tx:#1c1b19;--mu:#6f6c66;--ac:#0f766e;--ac2:#fff;--bd:#e3e0d9;--rd:#b42318;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141413;--card:#1e1e1c;--tx:#f1efea;--mu:#a09c93;--ac:#2dd4bf;--ac2:#04211d;--bd:#33322e;--rd:#f97066}}
@@ -44,6 +50,7 @@ th{color:var(--mu);font-weight:600;border-top:0}
 <main>
 <h1>Comanda de entrada e saída</h1>
 <div class="row sp mu" id="who" style="margin-bottom:8px"></div>
+<button id="inst" class="pri" hidden style="width:100%;margin-bottom:8px">Instalar aplicativo</button>
 <div class="mu" id="sst" style="margin-bottom:6px"></div>
 <div class="tabs" id="tabs"></div>
 <div id="app"></div>
@@ -93,10 +100,19 @@ function conta(){
 function authAct(a,b){
   if(CLOUD){
     if(a==='centrar'){var em=val('a_n').trim(),pw0=val('a_p');if(!em||!pw0){amsg('Informe e-mail e senha.');return true}amsg('Entrando...');sb.auth.signInWithPassword({email:em,password:pw0}).then(function(r){if(r.error)amsg('E-mail ou senha incorretos.');else onAuth(r.data.session)});return true}
-    if(a==='ccriar'){var em2=val('a_n').trim(),pw2=val('a_p');if(!em2||pw2.length<6){amsg('Informe o e-mail e uma senha de pelo menos 6 caracteres.');return true}sb.auth.signUp({email:em2,password:pw2}).then(function(r){if(r.error)amsg(r.error.message);else if(r.data.session)onAuth(r.data.session);else amsg('Conta criada. Confirme pelo link enviado ao seu e-mail e depois entre.')});return true}
+    if(a==='ccriar'){var em2=val('a_n').trim(),pw2=val('a_p');if(!em2||pw2.length<6){amsg('Informe o e-mail e uma senha de pelo menos 6 caracteres.');return true}sb.auth.signUp({email:em2,password:pw2}).then(function(r){if(r.error)amsg(r.error.message);else if(r.data.session)onAuth(r.data.session);else amsg('Conta criada. Se o Supabase pedir, confirme pelo link do e-mail. Depois, aguarde o administrador aprovar.')});return true}
     if(a==='cesqueci'){var em3=val('a_n').trim();if(!em3){amsg('Digite seu e-mail acima.');return true}sb.auth.resetPasswordForEmail(em3,{redirectTo:location.origin+location.pathname}).then(function(r){amsg(r.error?r.error.message:'Enviamos um link para redefinir a senha.')});return true}
-    if(a==='sair'){sb.auth.signOut();cur=null;view='abertas';sel=null;setStat('');render();return true}
+    if(a==='sair'){sb.auth.signOut();cur=null;wait=null;view='abertas';sel=null;setStat('');render();return true}
     if(a==='syncnow'){sync();return true}
+    if(a==='cverif'){sb.auth.getSession().then(function(r){if(r.data&&r.data.session)onAuth(r.data.session)});return true}
+    if(a==='tab'&&b.dataset.v==='admin'&&cur&&cur.admin){loadPF().then(function(){if(view==='admin')render()}).catch(function(){})}
+    if(a==='adrefresh'){loadPF().then(function(){render()}).catch(function(){});return true}
+    if(a==='adst'||a==='adpap'){
+      if(!cur||!cur.admin)return true;
+      if((b.dataset.v==='recusado'||b.dataset.v==='0')&&!confirm('Confirmar esta alteração?'))return true;
+      var rp=a==='adst'?sb.rpc('admin_status',{alvo:b.dataset.id,novo:b.dataset.v}):sb.rpc('admin_papel',{alvo:b.dataset.id,valor:b.dataset.v==='1'});
+      rp.then(function(r){if(r.error)alert(r.error.message);return loadPF()}).then(function(){render()}).catch(function(){});
+      return true}
     if(a==='csenha'){var np=val('c_n');if(np.length<6){amsg('A senha precisa ter ao menos 6 caracteres.');return true}sb.auth.updateUser({password:np}).then(function(r){amsg(r.error?r.error.message:'Senha alterada.')});return true}
   }
   if(a==='criar'){var n=val('a_n').trim(),p=val('a_p');
@@ -127,10 +143,12 @@ function render(){
   if(!cur){$('who').innerHTML='';$('tabs').innerHTML='';$('app').innerHTML=authView();return}
   $('who').innerHTML='<span>Olá, '+esc(cur.nome)+'</span><button class="q" data-act="sair">Sair</button>';
   var T=[['abertas','Abertas'],['fechadas','Fechadas'],['caixa','Caixa'],['fluxo','Fluxo'],['itens','Itens'],['backup','Backup'],['conta','Conta']];
+  if(CLOUD&&!cur.admin)T=T.filter(function(t){return t[0]!=='backup'});
+  if(CLOUD&&cur.admin)T.push(['admin','Admin'+(PF.pend?' ('+PF.pend+')':'')]);
   $('tabs').innerHTML=T.map(function(t){return '<button data-act="tab" data-v="'+t[0]+'" class="'+(view===t[0]&&!sel?'on':'')+'">'+t[1]+'</button>'}).join('');
   var h='';
   if(sel&&find(sel))h=detail(find(sel));
-  else{sel=null;h=view==='abertas'?lista(false):view==='fechadas'?lista(true):view==='itens'?itens():view==='caixa'?caixa():view==='fluxo'?fluxo():view==='conta'?conta():backup()}
+  else{sel=null;h=view==='abertas'?lista(false):view==='fechadas'?lista(true):view==='itens'?itens():view==='caixa'?caixa():view==='fluxo'?fluxo():view==='admin'?adminView():view==='conta'?conta():backup()}
   $('app').innerHTML=h;
 }
 
@@ -310,12 +328,29 @@ function hs(s){var h=5381;for(var i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i)
 function flat(){var o={};S.c.forEach(function(x){o['c:'+x.id]=x});S.cat.forEach(function(x){o['i:'+x.id]=x});S.cats.forEach(function(x){o['g:'+x.id]=x});S.sai.forEach(function(x){o['s:'+x.id]=x});return o}
 function upLocal(t,id,d){var a=S[AR[t]],k=-1;a.forEach(function(x,j){if(x.id===id)k=j});if(d){if(k<0)a.push(d);else a[k]=d}else if(k>=0)a.splice(k,1)}
 function softRender(){var a=document.activeElement;if(a&&a.id&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))return;render()}
+var wait=null,PF={list:[],pend:0,loaded:false};
+function cachePerfil(uid,p){try{localStorage.setItem('comanda_perfil_v1',JSON.stringify({uid:uid,status:p?p.status:'pendente',is_admin:!!(p&&p.is_admin)}))}catch(e){}}
+function cachedPerfil(uid){try{var c=JSON.parse(localStorage.getItem('comanda_perfil_v1'));if(c&&c.uid===uid)return c}catch(e){}return null}
+async function checkPerfil(){var r=await sb.from('perfis').select('status,is_admin').eq('id',SY.uid).maybeSingle();if(r.error)throw r.error;return r.data}
+function loadPF(){return sb.from('perfis').select('id,email,status,is_admin,criado_em').order('criado_em',{ascending:true}).then(function(r){if(r.error)throw r.error;PF.list=r.data;PF.pend=r.data.filter(function(p){return p.status==='pendente'}).length;PF.loaded=true})}
+function adminView(){
+  if(!PF.loaded)return '<p class="mu">Carregando...</p>';
+  function row(p,btns){return '<div class="item row sp"><span>'+esc(p.email||'(sem e-mail)')+(p.is_admin?' <span class="mu">(admin)</span>':'')+(p.id===cur.id?' <span class="mu">(você)</span>':'')+'</span><span class="row">'+btns+'</span></div>'}
+  function bt(cls,act,id,v,t){return '<button class="q '+cls+'" data-act="'+act+'" data-id="'+id+'" data-v="'+v+'">'+t+'</button>'}
+  var pend=PF.list.filter(function(p){return p.status==='pendente'}),ok=PF.list.filter(function(p){return p.status==='aprovado'}),rec=PF.list.filter(function(p){return p.status==='recusado'});
+  var h='<div class="row sp" style="margin-bottom:10px"><b>Administração</b><button class="q" data-act="adrefresh">Atualizar</button></div>';
+  h+='<div class="card"><b>Aguardando aprovação</b>'+(pend.length?pend.map(function(p){return row(p,bt('pri','adst',p.id,'aprovado','Aprovar')+bt('dng','adst',p.id,'recusado','Recusar'))}).join(''):'<p class="mu">Nenhum cadastro pendente.</p>')+'</div>';
+  h+='<div class="card"><b>Usuários ativos</b>'+ok.map(function(p){if(p.id===cur.id)return row(p,'');return row(p,bt('','adpap',p.id,p.is_admin?'0':'1',p.is_admin?'Remover admin':'Tornar admin')+bt('dng','adst',p.id,'recusado','Bloquear'))}).join('')+'</div>';
+  if(rec.length)h+='<div class="card"><b>Bloqueados</b>'+rec.map(function(p){return row(p,bt('pri','adst',p.id,'aprovado','Liberar'))}).join('')+'</div>';
+  return h;
+}
 function cloudAuth(){
   if(booting)return '<p class="mu">Carregando...</p>';
+  if(wait)return '<div class="card"><b>'+(wait==='recusado'?'Acesso não autorizado':'Aguardando aprovação')+'</b><p class="mu">'+(wait==='recusado'?'O administrador não liberou este cadastro.':'Seu cadastro foi enviado. Quando o administrador aprovar, toque em Verificar novamente.')+'</p><button class="pri" style="width:100%" data-act="cverif">Verificar novamente</button><button style="width:100%;margin-top:8px" data-act="sair">Sair</button></div>';
   return '<div class="card"><b>Entrar</b><p class="mu">Use o mesmo e-mail e senha em todos os aparelhos.</p><input id="a_n" type="email" placeholder="E-mail" autocomplete="username"><input id="a_p" type="password" placeholder="Senha" style="margin-top:8px" autocomplete="current-password"><button class="pri" style="width:100%;margin-top:10px" data-act="centrar">Entrar</button><button style="width:100%;margin-top:8px" data-act="ccriar">Criar conta</button><p class="mu" id="amsg"></p><button class="q" data-act="cesqueci">Esqueci a senha</button></div>';
 }
 function contaCloud(){
-  return '<div class="card"><b>Conta na nuvem</b><p class="mu">'+esc(cur.nome)+'</p><button data-act="syncnow">Sincronizar agora</button></div><div class="card"><b>Alterar senha</b><input id="c_n" type="password" placeholder="Nova senha (m\u00edn. 6)" style="margin-top:8px"><button class="pri" style="margin-top:8px" data-act="csenha">Salvar nova senha</button></div><p class="mu" id="amsg"></p>';
+  return '<div class="card"><b>Conta na nuvem</b><p class="mu">'+esc(cur.nome)+(cur.admin?' · Administrador':' · Funcionário')+'</p><button data-act="syncnow">Sincronizar agora</button></div><div class="card"><b>Alterar senha</b><input id="c_n" type="password" placeholder="Nova senha (m\u00edn. 6)" style="margin-top:8px"><button class="pri" style="margin-top:8px" data-act="csenha">Salvar nova senha</button></div><p class="mu" id="amsg"></p>';
 }
 async function pull(){
   var rows=[],from=0,first=!SY.since;
@@ -345,7 +380,7 @@ async function push(){
   Object.keys(SY.m).forEach(function(k){if(!L[k])up.push({k:k,tipo:k[0],id:k.slice(2),dados:{},apagado:true})});
   for(var i=0;i<up.length;i+=200){
     var ch=up.slice(i,i+200);
-    var r=await sb.from('registros').upsert(ch.map(function(x){return{user_id:SY.uid,tipo:x.tipo,id:x.id,dados:x.dados,apagado:x.apagado}}),{onConflict:'user_id,tipo,id'});
+    var r=await sb.from('registros').upsert(ch.map(function(x){return{user_id:SY.uid,tipo:x.tipo,id:x.id,dados:x.dados,apagado:x.apagado}}),{onConflict:'tipo,id'});
     if(r.error)throw r.error;
     ch.forEach(function(x){if(x.apagado)delete SY.m[x.k];else SY.m[x.k]=x.h});
   }
@@ -356,8 +391,12 @@ async function sync(){
   if(syncing){syncAgain=true;return}
   syncing=true;setStat('Sincronizando...');
   try{
+    var pf=await checkPerfil();
+    if(!pf||pf.status!=='aprovado'){wait=pf?pf.status:'pendente';cur=null;syncing=false;setStat('');render();return}
+    cur.admin=!!pf.is_admin;cachePerfil(SY.uid,pf);
     migr();
     var ch=await pull();
+    if(cur.admin){var pb=PF.pend;try{await loadPF()}catch(e2){}if(PF.pend!==pb)ch=true}
     await push();
     saveLocal();saveSY();
     setStat('Sincronizado \u00e0s '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
@@ -369,10 +408,14 @@ async function sync(){
 function schedSync(){if(!CLOUD)return;clearTimeout(stimer);stimer=setTimeout(sync,1500)}
 function onAuth(s){
   if(!s)return;
-  if(SY.uid&&SY.uid!==s.user.id)SY={uid:null,since:null,m:{}};
   SY.uid=s.user.id;saveSY();
-  cur={id:s.user.id,nome:s.user.email,admin:true};
-  booting=false;render();sync();
+  sb.from('perfis').select('status,is_admin').eq('id',s.user.id).maybeSingle().then(function(r){
+    var p=r.data;
+    if(r.error)p=cachedPerfil(s.user.id);else cachePerfil(s.user.id,p);
+    booting=false;
+    if(p&&p.status==='aprovado'){wait=null;cur={id:s.user.id,nome:s.user.email,admin:!!p.is_admin};render();sync()}
+    else{wait=p?p.status:'pendente';cur=null;render()}
+  }).catch(function(){booting=false;wait='pendente';cur=null;render()});
 }
 if(CLOUD){
   sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
@@ -383,6 +426,11 @@ if(CLOUD){
   document.addEventListener('visibilitychange',function(){if(!document.hidden)sync()});
   window.addEventListener('online',sync);
 }
+var dp=null;
+window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();dp=e;$('inst').hidden=false});
+$('inst').addEventListener('click',function(){if(dp){dp.prompt();dp=null;$('inst').hidden=true}});
+window.addEventListener('appinstalled',function(){$('inst').hidden=true});
+if('serviceWorker' in navigator)window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})});
 render();
 </script>
 </body>
