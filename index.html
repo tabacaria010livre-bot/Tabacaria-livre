@@ -19,28 +19,29 @@
 :root[data-theme="dark"]{--bg:#141413;--card:#1e1e1c;--tx:#f1efea;--mu:#a09c93;--ac:#2dd4bf;--ac2:#04211d;--bd:#33322e;--rd:#f97066}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,Segoe UI,sans-serif}
-:root{--bgop:.12}
+:root{--bgop:.32;--cardop:30%;--inop:50%}
 body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:url(logo-bg.webp) center 42%/min(94vw,640px) auto no-repeat;opacity:var(--bgop)}
-main{position:relative;z-index:1}
+main{position:relative;z-index:1;text-shadow:0 0 5px var(--bg),0 0 2px var(--bg)}
+button.pri,button.on{text-shadow:none}
 main{max-width:640px;margin:0 auto;padding:14px}
 h1{font-size:20px;margin:4px 0 12px}
 .tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}
 .tabs button{flex:1;white-space:nowrap}
 button,input,textarea,select{font:inherit;color:var(--tx)}
-button{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px 12px;cursor:pointer}
+button{background:color-mix(in srgb,var(--card) var(--inop),transparent);border:1px solid var(--bd);border-radius:10px;padding:10px 12px;cursor:pointer}
 button.on,button.pri{background:var(--ac);color:var(--ac2);border-color:var(--ac)}
 button.dng{color:var(--rd)}
-input,textarea,select{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px;width:100%}
+input,textarea,select{background:color-mix(in srgb,var(--card) var(--inop),transparent);border:1px solid var(--bd);border-radius:10px;padding:10px;width:100%}
 .row{display:flex;gap:8px;align-items:center}
 .row>*{min-width:0}
-.card{background:color-mix(in srgb,var(--card) 80%,transparent);border:1px solid var(--bd);border-radius:14px;padding:12px;margin-bottom:10px}
+.card{background:color-mix(in srgb,var(--card) var(--cardop),transparent);border:1px solid var(--bd);border-radius:14px;padding:12px;margin-bottom:10px}
 .mu{color:var(--mu);font-size:14px}
 .big{font-size:22px;font-weight:700}
 .sp{justify-content:space-between}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
 .chips button{padding:6px 10px;font-size:14px}
 .stat{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
-.stat div{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px}
+.stat div{background:color-mix(in srgb,var(--card) var(--cardop),transparent);border:1px solid var(--bd);border-radius:12px;padding:10px}
 .item{padding:6px 0;border-top:1px solid var(--bd)}
 .q{width:auto;padding:4px 10px}
 .sc{overflow-x:auto}
@@ -106,7 +107,7 @@ function authAct(a,b){
     if(a==='centrar'){var em=val('a_n').trim(),pw0=val('a_p');if(!em||!pw0){amsg('Informe e-mail e senha.');return true}amsg('Entrando...');sb.auth.signInWithPassword({email:em,password:pw0}).then(function(r){if(r.error)amsg('E-mail ou senha incorretos.');else onAuth(r.data.session)});return true}
     if(a==='ccriar'){var em2=val('a_n').trim(),pw2=val('a_p');if(!em2||pw2.length<6){amsg('Informe o e-mail e uma senha de pelo menos 6 caracteres.');return true}sb.auth.signUp({email:em2,password:pw2}).then(function(r){if(r.error)amsg(r.error.message);else if(r.data.session)onAuth(r.data.session);else amsg('Conta criada. Se o Supabase pedir, confirme pelo link do e-mail. Depois, aguarde o administrador aprovar.')});return true}
     if(a==='cesqueci'){var em3=val('a_n').trim();if(!em3){amsg('Digite seu e-mail acima.');return true}sb.auth.resetPasswordForEmail(em3,{redirectTo:location.origin+location.pathname}).then(function(r){amsg(r.error?r.error.message:'Enviamos um link para redefinir a senha.')});return true}
-    if(a==='sair'){sb.auth.signOut();cur=null;wait=null;view='abertas';sel=null;setStat('');render();return true}
+    if(a==='sair'){try{localStorage.removeItem('comanda_login_v1')}catch(e){}sb.auth.signOut();cur=null;wait=null;view='abertas';sel=null;setStat('');render();return true}
     if(a==='syncnow'){sync();return true}
     if(a==='cverif'){sb.auth.getSession().then(function(r){if(r.data&&r.data.session)onAuth(r.data.session)});return true}
     if(a==='tab'&&b.dataset.v==='admin'&&cur&&cur.admin){loadPF().then(function(){if(view==='admin')render()}).catch(function(){})}
@@ -395,6 +396,12 @@ async function sync(){
   if(syncing){syncAgain=true;return}
   syncing=true;setStat('Sincronizando...');
   try{
+    var ss=await sb.auth.getSession();
+    if(!ss.data.session){
+      if(isNetErr(ss.error))throw ss.error;
+      try{localStorage.removeItem('comanda_login_v1')}catch(e3){}
+      cur=null;wait=null;syncing=false;setStat('');render();return;
+    }
     var pf=await checkPerfil();
     if(!pf||pf.status!=='aprovado'){wait=pf?pf.status:'pendente';cur=null;syncing=false;setStat('');render();return}
     cur.admin=!!pf.is_admin;cachePerfil(SY.uid,pf);
@@ -410,9 +417,21 @@ async function sync(){
   if(syncAgain){syncAgain=false;schedSync()}
 }
 function schedSync(){if(!CLOUD)return;clearTimeout(stimer);stimer=setTimeout(sync,1500)}
+function savedLogin(){try{return JSON.parse(localStorage.getItem('comanda_login_v1'))}catch(e){return null}}
+function isNetErr(e){return !!e&&/Retryable|fetch|network/i.test(String(e.name)+' '+String(e.message))}
+function offlineBoot(err){
+  var l=savedLogin(),p=l&&cachedPerfil(l.uid);
+  booting=false;
+  if(l&&p&&p.status==='aprovado'&&(!navigator.onLine||isNetErr(err))){
+    SY.uid=l.uid;cur={id:l.uid,nome:l.email,admin:!!p.is_admin};
+    render();setStat('Offline: dados salvos no aparelho');return;
+  }
+  render();
+}
 function onAuth(s){
   if(!s)return;
   SY.uid=s.user.id;saveSY();
+  try{localStorage.setItem('comanda_login_v1',JSON.stringify({uid:s.user.id,email:s.user.email}))}catch(e){}
   sb.from('perfis').select('status,is_admin').eq('id',s.user.id).maybeSingle().then(function(r){
     var p=r.data;
     if(r.error)p=cachedPerfil(s.user.id);else cachePerfil(s.user.id,p);
@@ -424,15 +443,28 @@ function onAuth(s){
 if(CLOUD){
   sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
   cur=null;
-  sb.auth.getSession().then(function(r){booting=false;if(r.data&&r.data.session)onAuth(r.data.session);else render()}).catch(function(){booting=false;render()});
+  if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
+  sb.auth.getSession().then(function(r){if(r.data&&r.data.session)onAuth(r.data.session);else offlineBoot(r.error)}).catch(function(e){offlineBoot(e)});
   sb.auth.onAuthStateChange(function(ev){if(ev==='PASSWORD_RECOVERY'){var p=prompt('Digite a nova senha (m\u00edn. 6 caracteres):');if(p&&p.length>=6)sb.auth.updateUser({password:p}).then(function(){alert('Senha alterada.')})}});
   setInterval(function(){if(!document.hidden)sync()},20000);
   document.addEventListener('visibilitychange',function(){if(!document.hidden)sync()});
   window.addEventListener('online',sync);
 }
-(function(){try{var v=localStorage.getItem('comanda_bgop');if(v!==null)document.documentElement.style.setProperty('--bgop',String(+v/100))}catch(e){}})();
-function bgCard(){var v=Math.round((parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--bgop'))||0.12)*100);return '<div class="card"><b>Logo de fundo</b><p class="mu">Transparência da logo no fundo do app (0% esconde).</p><input id="bgr" type="range" min="0" max="40" step="1" value="'+v+'"><div class="mu" id="bgv">'+v+'%</div></div>'}
-document.addEventListener('input',function(e){if(e.target.id==='bgr'){var v=+e.target.value;document.documentElement.style.setProperty('--bgop',String(v/100));$('bgv').textContent=v+'%';try{localStorage.setItem('comanda_bgop',v)}catch(x){}}});
+function setVis(k,v){var r=document.documentElement.style;if(k==='bg')r.setProperty('--bgop',String(v/100));else{r.setProperty('--cardop',v+'%');r.setProperty('--inop',Math.min(100,v+20)+'%')}}
+(function(){try{var a=localStorage.getItem('comanda_bgop2'),b=localStorage.getItem('comanda_cardop2');if(a!==null)setVis('bg',+a);if(b!==null)setVis('card',+b)}catch(e){}})();
+function bgCard(){
+  var cs=getComputedStyle(document.documentElement);
+  var a=Math.round((parseFloat(cs.getPropertyValue('--bgop'))||0.32)*100),b=parseInt(cs.getPropertyValue('--cardop'))||30;
+  return '<div class="card"><b>Aparência</b><p class="mu">Visibilidade da logo de fundo</p><input id="bgr" type="range" min="0" max="80" step="1" value="'+a+'"><div class="mu" id="bgv">'+a+'%</div><p class="mu">Visibilidade dos cartões (menor = mais transparente)</p><input id="cdr" type="range" min="0" max="100" step="1" value="'+b+'"><div class="mu" id="cdv">'+b+'%</div></div>';
+}
+document.addEventListener('input',function(e){
+  var id=e.target.id;if(id!=='bgr'&&id!=='cdr')return;
+  var v=+e.target.value;
+  try{
+    if(id==='bgr'){setVis('bg',v);$('bgv').textContent=v+'%';localStorage.setItem('comanda_bgop2',v)}
+    else{setVis('card',v);$('cdv').textContent=v+'%';localStorage.setItem('comanda_cardop2',v)}
+  }catch(x){}
+});
 var dp=null;
 window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();dp=e;$('inst').hidden=false});
 $('inst').addEventListener('click',function(){if(dp){dp.prompt();dp=null;$('inst').hidden=true}});
