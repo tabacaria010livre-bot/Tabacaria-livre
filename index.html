@@ -59,6 +59,7 @@ th{color:var(--mu);font-weight:600;border-top:0}
 <div class="row sp mu" id="who" style="margin-bottom:8px"></div>
 <button id="inst" class="pri" hidden style="width:100%;margin-bottom:8px">Instalar aplicativo</button>
 <div class="mu" id="sst" style="margin-bottom:6px"></div>
+<div id="simb"></div>
 <div class="tabs" id="tabs"></div>
 <div id="app"></div>
 <input type="file" id="cbfile" accept="image/*" hidden>
@@ -111,13 +112,18 @@ function authAct(a,b){
     if(a==='centrar'){var em=val('a_n').trim(),pw0=val('a_p');if(!em||!pw0){amsg('Informe e-mail e senha.');return true}amsg('Entrando...');sb.auth.signInWithPassword({email:em,password:pw0}).then(function(r){if(r.error)amsg('E-mail ou senha incorretos.');else onAuth(r.data.session)});return true}
     if(a==='ccriar'){var em2=val('a_n').trim(),pw2=val('a_p');if(!em2||pw2.length<6){amsg('Informe o e-mail e uma senha de pelo menos 6 caracteres.');return true}sb.auth.signUp({email:em2,password:pw2}).then(function(r){if(r.error)amsg(r.error.message);else if(r.data.session)onAuth(r.data.session);else amsg('Conta criada. Se o Supabase pedir, confirme pelo link do e-mail. Depois, aguarde o administrador aprovar.')});return true}
     if(a==='cesqueci'){var em3=val('a_n').trim();if(!em3){amsg('Digite seu e-mail acima.');return true}sb.auth.resetPasswordForEmail(em3,{redirectTo:location.origin+location.pathname}).then(function(r){amsg(r.error?r.error.message:'Enviamos um link para redefinir a senha.')});return true}
-    if(a==='sair'){try{localStorage.removeItem('comanda_login_v1')}catch(e){}sb.auth.signOut();cur=null;wait=null;view='abertas';sel=null;setStat('');render();return true}
+    if(a==='sair'){try{localStorage.removeItem('comanda_login_v1')}catch(e){}sb.auth.signOut();cur=null;wait=null;SIMC=null;view='abertas';sel=null;setStat('');render();return true}
     if(a==='syncnow'){sync();return true}
+    if(a==='simset'){if(!cur||cur.cargo!=='desenvolvedor')return true;SIMC=b.dataset.c==='real'?null:b.dataset.c;render();return true}
+    if(a==='simx'){SIMC=null;render();return true}
+    if(a==='sim1'){simOne();return true}
+    if(a==='simall'){simAll();return true}
     if(a==='cverif'){sb.auth.getSession().then(function(r){if(r.data&&r.data.session)onAuth(r.data.session)});return true}
     if(a==='tab'&&b.dataset.v==='admin'&&cur&&cur.admin){loadPF().then(function(){if(view==='admin')render()}).catch(function(){})}
     if(a==='adrefresh'){loadPF().then(function(){render()}).catch(function(){});return true}
     if(a==='adst'||a==='adpap'){
       if(!cur||!cur.admin)return true;
+      if(SIMC){alert('Modo simulação: nenhuma alteração real foi feita. Use a aba Teste para testar as regras.');return true}
       if((b.dataset.v==='recusado'||b.dataset.v==='0')&&!confirm('Confirmar esta alteração?'))return true;
       var rp=sb.rpc('admin_status',{alvo:b.dataset.id,novo:b.dataset.v});
       rp.then(function(r){if(r.error)alert(r.error.message);return loadPF()}).then(function(){render()}).catch(function(){});
@@ -149,18 +155,17 @@ function authAct(a,b){
 document.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target.id&&e.target.id.indexOf('a_')===0){var b=document.querySelector('[data-act="criar"],[data-act="entrar"],[data-act="centrar"]');if(b)b.click()}});
 
 function render(){
-  if(!cur){$('ttl').style.display='none';$('who').innerHTML='';$('tabs').innerHTML='';$('app').innerHTML=authView();return}
+  if(!cur){$('simb').innerHTML='';$('ttl').style.display='none';$('who').innerHTML='';$('tabs').innerHTML='';$('app').innerHTML=authView();return}
   $('ttl').style.display='';
   $('who').innerHTML='<span>Olá, '+esc(cur.nome)+'</span><button class="q" data-act="sair">Sair</button>';
   var T=[['abertas','Abertas'],['fechadas','Fechadas'],['caixa','Caixa'],['fluxo','Fluxo'],['itens','Itens'],['leitor','Leitor'],['backup','Backup'],['conta','Conta']];
-  if(CLOUD&&RK()<3)T=T.filter(function(t){return t[0]!=='backup'});
-  if(CLOUD&&RK()<2)T=T.filter(function(t){return t[0]!=='fluxo'});
-  if(CLOUD&&cur.admin)T.push(['admin','Admin'+(PF.pend?' ('+PF.pend+')':'')]);
+  if(CLOUD){T=applyRole(T,ecargo());if(cur.cargo==='desenvolvedor')T.push(['teste','Teste'])}
+  $('simb').innerHTML=(CLOUD&&SIMC&&cur.cargo==='desenvolvedor')?'<div class="card" style="border-color:var(--ac)">🧪 <b>Simulando: '+CARGOS[SIMC]+'</b>. Nenhuma alteração real de equipe será feita. <button class="q" data-act="simx">Sair da simulação</button></div>':'';
   if(CLOUD&&!T.some(function(t){return t[0]===view}))view='abertas';
   $('tabs').innerHTML=T.map(function(t){return '<button data-act="tab" data-v="'+t[0]+'" class="'+(view===t[0]&&!sel?'on':'')+'">'+t[1]+'</button>'}).join('');
   var h='';
   if(sel&&find(sel))h=detail(find(sel));
-  else{sel=null;h=view==='abertas'?lista(false):view==='fechadas'?lista(true):view==='itens'?itens():view==='caixa'?caixa():view==='fluxo'?fluxo():view==='admin'?adminView():view==='leitor'?leitorView():view==='conta'?bgCard()+updCard()+conta():backup()}
+  else{sel=null;h=view==='abertas'?lista(false):view==='fechadas'?lista(true):view==='itens'?itens():view==='caixa'?caixa():view==='fluxo'?fluxo():view==='admin'?adminView():view==='teste'?testeView():view==='leitor'?leitorView():view==='conta'?bgCard()+updCard()+conta():backup()}
   $('app').innerHTML=h;
 }
 
@@ -360,10 +365,13 @@ async function checkPerfil(){var r=await sb.from('perfis').select('status,cargo,
 function loadPF(){return sb.from('perfis').select('id,email,status,cargo,is_admin,criado_em').order('criado_em',{ascending:true}).then(function(r){if(r.error)throw r.error;PF.list=r.data;PF.pend=r.data.filter(function(p){return p.status==='pendente'}).length;PF.loaded=true})}
 var RANK={desenvolvedor:4,dono:3,gerente:2,funcionario:1},CARGOS={desenvolvedor:'Desenvolvedor',dono:'Dono',gerente:'Gerente',funcionario:'Funcionário'};
 function cargoOf(p){return p&&p.cargo&&RANK[p.cargo]?p.cargo:(p&&p.is_admin?'dono':'funcionario')}
-function RK(){return RANK[cur&&cur.cargo]||1}
+var SIMC=null;
+function ecargo(){return cur?((SIMC&&cur.cargo==='desenvolvedor')?SIMC:cur.cargo):'funcionario'}
+function RK(){return RANK[ecargo()]||1}
 function mkCur(id,email,p){var c=cargoOf(p);return{id:id,nome:email,cargo:c,admin:RANK[c]>=2}}
 document.addEventListener('change',function(e){
   var t=e.target;if(!t.classList||!t.classList.contains('cg'))return;
+  if(SIMC){alert('Modo simulação: nenhuma alteração real foi feita.');loadPF().then(function(){render()}).catch(function(){});return}
   if(!confirm('Alterar o cargo para '+CARGOS[t.value]+'?')){loadPF().then(function(){render()}).catch(function(){});return}
   sb.rpc('admin_cargo',{alvo:t.dataset.id,novo_cargo:t.value}).then(function(r){if(r.error)alert(r.error.message);return loadPF()}).then(function(){render()}).catch(function(){});
 });
@@ -383,12 +391,91 @@ function adminView(){
   var ok=PF.list.filter(function(p){return p.status==='aprovado'}).sort(function(a,b){return RANK[cg(b)]-RANK[cg(a)]});
   var rec=PF.list.filter(function(p){return p.status==='recusado'});
   var h='<div class="row sp" style="margin-bottom:6px"><b>Equipe</b><button class="q" data-act="adrefresh">Atualizar</button></div>';
-  h+='<p class="mu">Seu cargo: <b>'+CARGOS[cur.cargo]+'</b>'+(me<3?'. Você aprova cadastros e bloqueia funcionários, mas não promove ninguém.':'.')+'</p>';
+  h+='<p class="mu">Seu cargo: <b>'+CARGOS[ecargo()]+'</b>'+(me<3?'. Você aprova cadastros e bloqueia funcionários, mas não promove ninguém.':'.')+'</p>';
   h+='<div class="card"><b>Aguardando aprovação</b>'+(pend.length?pend.map(function(p){return row(p,can(p)?bt('pri',p.id,'aprovado','Aprovar')+bt('dng',p.id,'recusado','Recusar'):'')}).join(''):'<p class="mu">Nenhum cadastro pendente.</p>')+'</div>';
   h+='<div class="card"><b>Equipe ativa</b>'+ok.map(function(p){
     var ctrl=can(p)?sel(p)+bt('dng',p.id,'recusado','Bloquear'):(p.id===cur.id?'':(cg(p)==='desenvolvedor'?'<span class="mu">\U0001F512 Cargo protegido</span>':'<span class="mu">Sem permissão para alterar</span>'));
     return row(p,ctrl)}).join('')+'</div>';
   if(rec.length)h+='<div class="card"><b>Bloqueados</b>'+rec.map(function(p){return row(p,can(p)?bt('pri',p.id,'aprovado','Liberar'):'')}).join('')+'</div>';
+  return h;
+}
+function BASET(){return [['abertas','Abertas'],['fechadas','Fechadas'],['caixa','Caixa'],['fluxo','Fluxo'],['itens','Itens'],['leitor','Leitor'],['backup','Backup'],['conta','Conta']]}
+function applyRole(T,c){
+  var r=RANK[c]||1;
+  if(r<3)T=T.filter(function(t){return t[0]!=='backup'});
+  if(r<2)T=T.filter(function(t){return t[0]!=='fluxo'});
+  if(r>=2)T=T.concat([['admin','Admin'+(PF.pend?' ('+PF.pend+')':'')]]);
+  return T;
+}
+/* ===== Simulador de cargos (somente desenvolvedor) ===== */
+var FU=[{k:'D',n:'Dev Teste',c:'desenvolvedor',s:'aprovado'},{k:'O',n:'Dono Teste',c:'dono',s:'aprovado'},{k:'G',n:'Gerente Teste',c:'gerente',s:'aprovado'},{k:'F',n:'Funcionário Teste',c:'funcionario',s:'aprovado'},{k:'N',n:'Novo cadastro (pendente)',c:'funcionario',s:'pendente'}];
+var FA=[['aprovar','Aprovar cadastro'],['bloquear','Bloquear / recusar'],['c:funcionario','Mudar cargo para Funcionário'],['c:gerente','Mudar cargo para Gerente'],['c:dono','Mudar cargo para Dono'],['c:desenvolvedor','Mudar cargo para Desenvolvedor']];
+var CASES=[
+ ['F','aprovar','N',0],['F','bloquear','G',0],['F','c:gerente','N',0],
+ ['G','aprovar','N',1],['G','bloquear','F',1],['G','bloquear','G',0],['G','bloquear','O',0],['G','bloquear','D',0],['G','c:gerente','F',0],
+ ['O','aprovar','N',1],['O','bloquear','F',1],['O','bloquear','G',1],['O','bloquear','D',0],['O','bloquear','O',0],['O','c:gerente','F',1],['O','c:funcionario','G',1],['O','c:dono','F',0],['O','c:funcionario','D',0],['O','c:gerente','N',0],
+ ['D','bloquear','O',1],['D','c:dono','F',1],['D','c:funcionario','O',1],['D','c:funcionario','D',0],['D','bloquear','D',0],['D','c:desenvolvedor','F',1]
+];
+var VIS={funcionario:{fluxo:0,backup:0,admin:0},gerente:{fluxo:1,backup:0,admin:1},dono:{fluxo:1,backup:1,admin:1},desenvolvedor:{fluxo:1,backup:1,admin:1}};
+function fu(k){return FU.filter(function(x){return x.k===k})[0]}
+function actName(k){return FA.filter(function(x){return x[0]===k})[0][1]}
+function runCase(ak,act,tk){
+  var A=fu(ak),T=fu(tk),mesmo=ak===tk,p;
+  if(act==='aprovar'||act==='bloquear')p=sb.rpc('regra_status',{meu:A.c,alvo_cargo:T.c,novo:act==='aprovar'?'aprovado':'recusado',mesmo:mesmo});
+  else p=sb.rpc('regra_cargo',{meu:A.c,alvo_cargo:T.c,novo_cargo:act.slice(2),status_alvo:T.s,mesmo:mesmo});
+  return p.then(function(r){
+    if(r.error)return{ok:null,msg:'Erro ao consultar o servidor ('+r.error.message+'). Rode o supabase.sql atualizado.'};
+    return{ok:r.data===null,msg:r.data};
+  },function(){return{ok:null,msg:'Sem conexão com o servidor.'}});
+}
+function simOne(){
+  var r=$('simr');if(!r)return;
+  r.textContent='Consultando o servidor...';
+  runCase($('st_a').value,$('st_k').value,$('st_t').value).then(function(x){
+    r.innerHTML=x.ok===null?'⚠️ '+esc(x.msg):(x.ok?'✅ <b>Permitido</b>':'❌ <b>Negado:</b> '+esc(x.msg));
+  });
+}
+function simAll(){
+  var el=$('simall');if(!el)return;
+  el.textContent='Rodando os testes no servidor...';
+  var rows=[],okc=0,i=0,erro=false;
+  function next(){
+    if(i>=CASES.length)return Promise.resolve();
+    var c=CASES[i++];
+    return runCase(c[0],c[1],c[2]).then(function(x){
+      var exp=!!c[3],pass=(x.ok===exp);
+      if(x.ok===null)erro=true;
+      if(pass)okc++;
+      rows.push('<tr><td>'+esc(fu(c[0]).n)+'</td><td>'+esc(actName(c[1]))+'</td><td>'+esc(fu(c[2]).n)+'</td><td>'+(exp?'Permitir':'Negar')+'</td><td>'+(x.ok===null?'erro':(x.ok?'Permitiu':'Negou'))+'</td><td>'+(pass?'✅':'❌')+'</td></tr>');
+    }).then(next);
+  }
+  next().then(function(){
+    var vt=0,vo=0,vrows=[];
+    Object.keys(VIS).forEach(function(c){
+      var names=applyRole(BASET(),c).map(function(t){return t[0]});
+      ['fluxo','backup','admin'].forEach(function(n){
+        var got=names.indexOf(n)>-1?1:0,pass=got===VIS[c][n];vt++;if(pass)vo++;
+        vrows.push('<tr><td>'+CARGOS[c]+'</td><td>Tela '+n+'</td><td></td><td>'+(VIS[c][n]?'Mostrar':'Esconder')+'</td><td>'+(got?'Mostrou':'Escondeu')+'</td><td>'+(pass?'✅':'❌')+'</td></tr>');
+      });
+    });
+    var all=(okc===CASES.length&&vo===vt);
+    el.innerHTML=(erro?'<p>⚠️ O servidor não respondeu como esperado. Rode o <b>supabase.sql</b> atualizado e tente de novo.</p>':'')+'<p><b>'+(all?'✅ Tudo certo':'❌ Há diferenças')+'</b><br>Regras no servidor: '+okc+' de '+CASES.length+'<br>Telas por cargo: '+vo+' de '+vt+'</p><div class="sc"><table><tr><th>Quem</th><th>Ação</th><th>Alvo</th><th>Esperado</th><th>Resultado</th><th></th></tr>'+rows.join('')+vrows.join('')+'</table></div>';
+  });
+}
+function testeView(){
+  if(!cur||cur.cargo!=='desenvolvedor')return '<p class="mu">Acesso restrito ao desenvolvedor.</p>';
+  var ec=ecargo(),r=RANK[ec]||1;
+  var names=[['abertas','Abertas'],['fechadas','Fechadas'],['caixa','Caixa'],['fluxo','Fluxo'],['itens','Itens'],['leitor','Leitor'],['backup','Backup'],['conta','Conta'],['admin','Admin']];
+  var vis=applyRole(BASET(),ec).map(function(t){return t[0]});
+  function yn(b){return b?'<span style="color:var(--ac)">✓</span>':'<span style="color:var(--rd)">✗</span>'}
+  function opts(list,sel){return list.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===sel?' selected':'')+'>'+esc(x[1])+'</option>'}).join('')}
+  var h='<div class="card"><b>Simulador de cargos</b><p class="mu">Escolha um cargo para ver o app como ele veria. Só muda o que aparece na tela: ações reais de equipe ficam bloqueadas durante a simulação.</p><div class="row" style="flex-wrap:wrap;gap:6px">'+
+    ['real','dono','gerente','funcionario'].map(function(k){var c=k==='real'?'desenvolvedor':k;return '<button class="'+(ec===c?'pri':'')+'" data-act="simset" data-c="'+k+'">'+CARGOS[c]+(k==='real'?' (você)':'')+'</button>'}).join('')+'</div></div>';
+  h+='<div class="card"><b>O que '+CARGOS[ec]+' pode</b><p class="mu" style="margin-top:8px">Telas</p><div class="chips">'+names.map(function(n){return '<span>'+yn(vis.indexOf(n[0])>-1)+' '+n[1]+'</span>'}).join('')+'</div>'+
+    [['Aprovar e recusar cadastros',r>=2],['Bloquear funcionários',r>=2],['Promover e rebaixar até gerente',r>=3],['Criar donos e desenvolvedores',r>=4],['Cargo protegido (ninguém altera)',ec==='desenvolvedor']].map(function(x){return '<div class="item row sp"><span>'+x[0]+'</span><span>'+yn(x[1])+'</span></div>'}).join('')+'</div>';
+  var fo=FU.map(function(u){return [u.k,u.n+' · '+CARGOS[u.c]]});
+  h+='<div class="card"><b>Testar uma regra no servidor</b><p class="mu">Usa usuários de mentira e as regras reais do banco. Nada é alterado.</p><p class="mu" style="margin:8px 0 4px">Quem faz</p><select id="st_a">'+opts(fo,'G')+'</select><p class="mu" style="margin:8px 0 4px">Ação</p><select id="st_k">'+opts(FA,'bloquear')+'</select><p class="mu" style="margin:8px 0 4px">Em quem</p><select id="st_t">'+opts(fo,'O')+'</select><button class="pri" style="width:100%;margin-top:10px" data-act="sim1">Executar teste</button><div id="simr" style="margin-top:10px"></div></div>';
+  h+='<div class="card"><b>Rodar todos os testes</b><p class="mu">Confere as regras do servidor e as telas de cada cargo com o que foi combinado.</p><button class="pri" style="width:100%" data-act="simall">Rodar todos</button><div id="simall" style="margin-top:10px"></div></div>';
   return h;
 }
 function loginHead(){return '<div style="text-align:center;margin:6px 0 14px"><img class="lg" src="logo.webp" alt="Tabacaria Livre Head Shop" width="280" height="298"><div style="margin:12px 0 2px;font-size:22px;font-weight:700">Tabacaria Livre Head Shop</div><div class="mu">Tudo para sua trip · Sistema de comandas</div></div>'}
@@ -546,7 +633,7 @@ function onCode(code,fromField){
   if(fromField){var e=$('cbin');if(e)e.focus()}
 }
 /* leitor laser USB/Bluetooth (funciona como teclado) */
-var SC={gap:150,min:4,end:'auto',sound:true},scanIdle=null,LT={t:[],buf:''},ltTimer=null,APPV='13nov-3';
+var SC={gap:150,min:4,end:'auto',sound:true},scanIdle=null,LT={t:[],buf:''},ltTimer=null,APPV='13nov-4';
 try{var _c=JSON.parse(localStorage.getItem('comanda_scan_cfg'));if(_c)for(var _k in _c)SC[_k]=_c[_k]}catch(e){}
 function saveSC(){try{localStorage.setItem('comanda_scan_cfg',JSON.stringify(SC))}catch(e){}}
 function showTest(buf,endk,ts){

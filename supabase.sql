@@ -87,23 +87,53 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- 5) Ações da equipe (aprovar, recusar, bloquear, liberar)
---    Gerente, dono e desenvolvedor podem; só em quem tem cargo ABAIXO do seu.
+-- 5) REGRAS (funções puras, sem dados): usadas pelas ações abaixo e pela aba Teste do app
+create or replace function public.regra_status(meu text, alvo_cargo text, novo text, mesmo boolean)
+returns text language plpgsql immutable as $$
+begin
+  if meu is null or meu not in ('desenvolvedor','dono','gerente') then
+    return 'Você não tem permissão para isso.';
+  end if;
+  if novo not in ('pendente','aprovado','recusado') then return 'Status inválido.'; end if;
+  if mesmo then return 'Você não pode alterar o seu próprio acesso.'; end if;
+  if alvo_cargo is null then return 'Usuário não encontrado.'; end if;
+  if public.rank_cargo(meu) <= public.rank_cargo(alvo_cargo) then
+    return 'Você só pode alterar usuários de cargo abaixo do seu.';
+  end if;
+  return null;
+end $$;
+
+create or replace function public.regra_cargo(meu text, alvo_cargo text, novo_cargo text, status_alvo text, mesmo boolean)
+returns text language plpgsql immutable as $$
+begin
+  if meu is null or meu not in ('desenvolvedor','dono') then
+    return 'Apenas o dono ou o desenvolvedor podem alterar cargos.';
+  end if;
+  if novo_cargo not in ('funcionario','gerente','dono','desenvolvedor') then return 'Cargo inválido.'; end if;
+  if mesmo then return 'Você não pode alterar o seu próprio cargo.'; end if;
+  if alvo_cargo is null then return 'Usuário não encontrado.'; end if;
+  if public.rank_cargo(meu) <= public.rank_cargo(alvo_cargo) then
+    return 'Você só pode alterar usuários de cargo abaixo do seu.';
+  end if;
+  if novo_cargo in ('dono','desenvolvedor') and meu <> 'desenvolvedor' then
+    return 'Apenas o desenvolvedor pode criar donos ou outros desenvolvedores.';
+  end if;
+  if novo_cargo <> 'funcionario' and status_alvo <> 'aprovado' then
+    return 'Aprove o cadastro antes de mudar o cargo.';
+  end if;
+  return null;
+end $$;
+
+-- 6) Ações da equipe
+--    Aprovar/recusar/bloquear/liberar: gerente, dono e desenvolvedor, só em cargo ABAIXO do seu.
 create or replace function public.admin_status(alvo uuid, novo text)
 returns void language plpgsql security definer set search_path = public as $$
-declare meu text; cargo_alvo text;
+declare meu text; cargo_alvo text; erro text;
 begin
   meu := public.meu_cargo();
-  if meu is null or meu not in ('desenvolvedor','dono','gerente') then
-    raise exception 'Você não tem permissão para isso.';
-  end if;
-  if novo not in ('pendente','aprovado','recusado') then raise exception 'Status inválido.'; end if;
-  if alvo = auth.uid() then raise exception 'Você não pode alterar o seu próprio acesso.'; end if;
   select cargo into cargo_alvo from public.perfis where id = alvo;
-  if cargo_alvo is null then raise exception 'Usuário não encontrado.'; end if;
-  if public.rank_cargo(meu) <= public.rank_cargo(cargo_alvo) then
-    raise exception 'Você só pode alterar usuários de cargo abaixo do seu.';
-  end if;
+  erro := public.regra_status(meu, cargo_alvo, novo, alvo = auth.uid());
+  if erro is not null then raise exception '%', erro; end if;
   if novo <> 'aprovado' and cargo_alvo in ('desenvolvedor','dono')
      and (select count(*) from public.perfis
           where status = 'aprovado' and cargo in ('desenvolvedor','dono')) <= 1 then
@@ -112,32 +142,17 @@ begin
   update public.perfis set status = novo where id = alvo;
 end $$;
 
--- 6) Mudança de cargo: só dono e desenvolvedor. Gerente NÃO promove ninguém.
+--    Mudar cargo: só dono e desenvolvedor. Gerente NÃO promove ninguém.
 --    Dono promove/rebaixa até gerente. Só o desenvolvedor cria donos.
 --    O cargo desenvolvedor é protegido: ninguém o altera pelo app.
 create or replace function public.admin_cargo(alvo uuid, novo_cargo text)
 returns void language plpgsql security definer set search_path = public as $$
-declare meu text; cargo_alvo text; status_alvo text;
+declare meu text; cargo_alvo text; status_alvo text; erro text;
 begin
   meu := public.meu_cargo();
-  if meu is null or meu not in ('desenvolvedor','dono') then
-    raise exception 'Apenas o dono ou o desenvolvedor podem alterar cargos.';
-  end if;
-  if novo_cargo not in ('funcionario','gerente','dono','desenvolvedor') then
-    raise exception 'Cargo inválido.';
-  end if;
-  if alvo = auth.uid() then raise exception 'Você não pode alterar o seu próprio cargo.'; end if;
   select cargo, status into cargo_alvo, status_alvo from public.perfis where id = alvo;
-  if cargo_alvo is null then raise exception 'Usuário não encontrado.'; end if;
-  if public.rank_cargo(meu) <= public.rank_cargo(cargo_alvo) then
-    raise exception 'Você só pode alterar usuários de cargo abaixo do seu.';
-  end if;
-  if novo_cargo in ('dono','desenvolvedor') and meu <> 'desenvolvedor' then
-    raise exception 'Apenas o desenvolvedor pode criar donos ou outros desenvolvedores.';
-  end if;
-  if novo_cargo <> 'funcionario' and status_alvo <> 'aprovado' then
-    raise exception 'Aprove o cadastro antes de mudar o cargo.';
-  end if;
+  erro := public.regra_cargo(meu, cargo_alvo, novo_cargo, status_alvo, alvo = auth.uid());
+  if erro is not null then raise exception '%', erro; end if;
   update public.perfis set cargo = novo_cargo where id = alvo;
 end $$;
 
@@ -145,8 +160,12 @@ drop function if exists public.admin_papel(uuid, boolean);
 
 revoke all on function public.admin_status(uuid, text) from public, anon, authenticated;
 revoke all on function public.admin_cargo(uuid, text) from public, anon, authenticated;
+revoke all on function public.regra_status(text, text, text, boolean) from public, anon, authenticated;
+revoke all on function public.regra_cargo(text, text, text, text, boolean) from public, anon, authenticated;
 grant execute on function public.admin_status(uuid, text) to authenticated;
 grant execute on function public.admin_cargo(uuid, text) to authenticated;
+grant execute on function public.regra_status(text, text, text, boolean) to authenticated;
+grant execute on function public.regra_cargo(text, text, text, text, boolean) to authenticated;
 
 -- 7) Regras de acesso aos perfis (somente leitura pela API; mudanças só pelas funções acima)
 drop policy if exists "perfis_select" on public.perfis;
