@@ -1,19 +1,55 @@
--- ============================================================
--- Comanda: banco compartilhado + aprovação de cadastros + admins
+-- =====================================================================
+-- Comanda: banco compartilhado + aprovação de cadastros + CARGOS
+-- Cargos: desenvolvedor > dono > gerente > funcionário
 -- Cole TUDO no SQL Editor do Supabase e execute. Pode rodar de novo sem problema.
--- ============================================================
+-- =====================================================================
 
--- 1) Perfis (quem pode entrar e quem é administrador)
+-- 1) Perfis
 create table if not exists public.perfis (
   id uuid primary key references auth.users(id) on delete cascade,
   email text,
   status text not null default 'pendente' check (status in ('pendente','aprovado','recusado')),
-  is_admin boolean not null default false,
+  cargo text,
   criado_em timestamptz not null default now()
 );
+alter table public.perfis add column if not exists cargo text;
 alter table public.perfis enable row level security;
 
+-- 1b) Migração da versão anterior (is_admin -> cargo)
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'perfis'
+      and column_name = 'is_admin' and is_generated = 'NEVER'
+  ) then
+    execute $q$update public.perfis set cargo = case when is_admin then 'dono' else 'funcionario' end where cargo is null$q$;
+    execute 'alter table public.perfis drop column is_admin';
+  end if;
+end $$;
+
+update public.perfis set cargo = 'funcionario' where cargo is null;
+alter table public.perfis alter column cargo set default 'funcionario';
+alter table public.perfis alter column cargo set not null;
+alter table public.perfis drop constraint if exists perfis_cargo_check;
+alter table public.perfis add constraint perfis_cargo_check
+  check (cargo in ('desenvolvedor','dono','gerente','funcionario'));
+
+-- is_admin continua existindo (calculado): verdadeiro para desenvolvedor e dono
+alter table public.perfis add column if not exists is_admin boolean
+  generated always as (cargo in ('desenvolvedor','dono')) stored;
+
 -- 2) Funções de apoio
+create or replace function public.rank_cargo(c text)
+returns int language sql immutable as $$
+  select case c when 'desenvolvedor' then 4 when 'dono' then 3 when 'gerente' then 2 else 1 end;
+$$;
+
+create or replace function public.meu_cargo()
+returns text language sql stable security definer set search_path = public as $$
+  select cargo from public.perfis where id = auth.uid() and status = 'aprovado';
+$$;
+
 create or replace function public.is_aprovado()
 returns boolean language sql stable security definer set search_path = public as $$
   select exists (select 1 from public.perfis where id = auth.uid() and status = 'aprovado');
@@ -21,23 +57,27 @@ $$;
 
 create or replace function public.is_admin()
 returns boolean language sql stable security definer set search_path = public as $$
-  select exists (select 1 from public.perfis where id = auth.uid() and status = 'aprovado' and is_admin);
+  select exists (select 1 from public.perfis
+                 where id = auth.uid() and status = 'aprovado' and cargo in ('desenvolvedor','dono'));
 $$;
 
--- 3) Quem já tem conta hoje entra como aprovado; a conta mais antiga vira administradora
-insert into public.perfis (id, email, status, is_admin)
-select u.id, u.email, 'aprovado', (row_number() over (order by u.created_at) = 1)
+-- 3) Se ainda não há perfis, quem já tem conta entra aprovado (a mais antiga vira dono)
+insert into public.perfis (id, email, status, cargo)
+select u.id, u.email, 'aprovado',
+       case when row_number() over (order by u.created_at) = 1 then 'dono' else 'funcionario' end
 from auth.users u
 where not exists (select 1 from public.perfis);
 
--- 4) Novos cadastros: o primeiro de todos vira admin; os demais ficam pendentes
+-- 4) Novos cadastros: o primeiro de todos vira dono; os demais ficam pendentes (funcionário)
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare primeiro boolean;
 begin
   select not exists (select 1 from public.perfis) into primeiro;
-  insert into public.perfis (id, email, status, is_admin)
-  values (new.id, new.email, case when primeiro then 'aprovado' else 'pendente' end, primeiro)
+  insert into public.perfis (id, email, status, cargo)
+  values (new.id, new.email,
+          case when primeiro then 'aprovado' else 'pendente' end,
+          case when primeiro then 'dono' else 'funcionario' end)
   on conflict (id) do nothing;
   return new;
 end $$;
@@ -47,47 +87,74 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- 5) Ações do administrador (só admins conseguem executar)
+-- 5) Ações da equipe (aprovar, recusar, bloquear, liberar)
+--    Gerente, dono e desenvolvedor podem; só em quem tem cargo ABAIXO do seu.
 create or replace function public.admin_status(alvo uuid, novo text)
 returns void language plpgsql security definer set search_path = public as $$
+declare meu text; cargo_alvo text;
 begin
-  if not public.is_admin() then raise exception 'Apenas administradores podem fazer isso.'; end if;
+  meu := public.meu_cargo();
+  if meu is null or meu not in ('desenvolvedor','dono','gerente') then
+    raise exception 'Você não tem permissão para isso.';
+  end if;
   if novo not in ('pendente','aprovado','recusado') then raise exception 'Status inválido.'; end if;
-  if alvo = auth.uid() and novo <> 'aprovado' then raise exception 'Você não pode bloquear a si mesmo.'; end if;
-  if novo <> 'aprovado'
-     and exists (select 1 from public.perfis where id = alvo and is_admin and status = 'aprovado')
-     and (select count(*) from public.perfis where is_admin and status = 'aprovado') <= 1 then
-    raise exception 'Não é possível bloquear o último administrador.';
+  if alvo = auth.uid() then raise exception 'Você não pode alterar o seu próprio acesso.'; end if;
+  select cargo into cargo_alvo from public.perfis where id = alvo;
+  if cargo_alvo is null then raise exception 'Usuário não encontrado.'; end if;
+  if public.rank_cargo(meu) <= public.rank_cargo(cargo_alvo) then
+    raise exception 'Você só pode alterar usuários de cargo abaixo do seu.';
+  end if;
+  if novo <> 'aprovado' and cargo_alvo in ('desenvolvedor','dono')
+     and (select count(*) from public.perfis
+          where status = 'aprovado' and cargo in ('desenvolvedor','dono')) <= 1 then
+    raise exception 'Não é possível bloquear o último dono ou desenvolvedor.';
   end if;
   update public.perfis set status = novo where id = alvo;
 end $$;
 
-create or replace function public.admin_papel(alvo uuid, valor boolean)
+-- 6) Mudança de cargo: só dono e desenvolvedor. Gerente NÃO promove ninguém.
+--    Dono promove/rebaixa até gerente. Só o desenvolvedor cria donos.
+--    O cargo desenvolvedor é protegido: ninguém o altera pelo app.
+create or replace function public.admin_cargo(alvo uuid, novo_cargo text)
 returns void language plpgsql security definer set search_path = public as $$
+declare meu text; cargo_alvo text; status_alvo text;
 begin
-  if not public.is_admin() then raise exception 'Apenas administradores podem fazer isso.'; end if;
-  if valor and not exists (select 1 from public.perfis where id = alvo and status = 'aprovado') then
-    raise exception 'Aprove o cadastro antes de torná-lo administrador.';
+  meu := public.meu_cargo();
+  if meu is null or meu not in ('desenvolvedor','dono') then
+    raise exception 'Apenas o dono ou o desenvolvedor podem alterar cargos.';
   end if;
-  if not valor
-     and exists (select 1 from public.perfis where id = alvo and is_admin and status = 'aprovado')
-     and (select count(*) from public.perfis where is_admin and status = 'aprovado') <= 1 then
-    raise exception 'Mantenha pelo menos um administrador.';
+  if novo_cargo not in ('funcionario','gerente','dono','desenvolvedor') then
+    raise exception 'Cargo inválido.';
   end if;
-  update public.perfis set is_admin = valor where id = alvo;
+  if alvo = auth.uid() then raise exception 'Você não pode alterar o seu próprio cargo.'; end if;
+  select cargo, status into cargo_alvo, status_alvo from public.perfis where id = alvo;
+  if cargo_alvo is null then raise exception 'Usuário não encontrado.'; end if;
+  if public.rank_cargo(meu) <= public.rank_cargo(cargo_alvo) then
+    raise exception 'Você só pode alterar usuários de cargo abaixo do seu.';
+  end if;
+  if novo_cargo in ('dono','desenvolvedor') and meu <> 'desenvolvedor' then
+    raise exception 'Apenas o desenvolvedor pode criar donos ou outros desenvolvedores.';
+  end if;
+  if novo_cargo <> 'funcionario' and status_alvo <> 'aprovado' then
+    raise exception 'Aprove o cadastro antes de mudar o cargo.';
+  end if;
+  update public.perfis set cargo = novo_cargo where id = alvo;
 end $$;
 
-revoke all on function public.admin_status(uuid, text) from public, anon, authenticated;
-revoke all on function public.admin_papel(uuid, boolean) from public, anon, authenticated;
-grant execute on function public.admin_status(uuid, text) to authenticated;
-grant execute on function public.admin_papel(uuid, boolean) to authenticated;
+drop function if exists public.admin_papel(uuid, boolean);
 
--- 6) Regras de acesso aos perfis (só leitura; alterações só pelas funções acima)
+revoke all on function public.admin_status(uuid, text) from public, anon, authenticated;
+revoke all on function public.admin_cargo(uuid, text) from public, anon, authenticated;
+grant execute on function public.admin_status(uuid, text) to authenticated;
+grant execute on function public.admin_cargo(uuid, text) to authenticated;
+
+-- 7) Regras de acesso aos perfis (somente leitura pela API; mudanças só pelas funções acima)
 drop policy if exists "perfis_select" on public.perfis;
 create policy "perfis_select" on public.perfis
-  for select to authenticated using (id = auth.uid() or public.is_admin());
+  for select to authenticated
+  using (id = auth.uid() or public.meu_cargo() in ('desenvolvedor','dono','gerente'));
 
--- 7) Dados da comanda: agora são compartilhados por todos os usuários aprovados
+-- 8) Dados da comanda: compartilhados por todos os usuários aprovados
 create table if not exists public.registros (
   user_id uuid default auth.uid(),
   tipo text not null,
@@ -98,11 +165,11 @@ create table if not exists public.registros (
   primary key (tipo, id)
 );
 
+alter table public.registros drop constraint if exists registros_pkey;
 alter table public.registros alter column user_id drop not null;
 alter table public.registros drop constraint if exists registros_user_id_fkey;
 alter table public.registros add constraint registros_user_id_fkey
   foreign key (user_id) references auth.users(id) on delete set null;
-alter table public.registros drop constraint if exists registros_pkey;
 alter table public.registros add primary key (tipo, id);
 create index if not exists registros_atualizado on public.registros (atualizado_em);
 
@@ -133,3 +200,9 @@ drop trigger if exists registros_touch on public.registros;
 create trigger registros_touch
   before insert or update on public.registros
   for each row execute function public.registros_touch();
+
+-- 9) CARGO DE DESENVOLVEDOR (protegido): definido SÓ por aqui, nunca pelo app.
+--    Troque o e-mail se for outra conta e execute novamente.
+update public.perfis
+set cargo = 'desenvolvedor', status = 'aprovado'
+where lower(email) = lower('games010brasil@gmail.com');
