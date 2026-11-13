@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Comanda</title>
+<title>Tabacaria Livre Head Shop</title>
 <script src="config.js"></script>
 <script src="supabase.js"></script>
 <link rel="manifest" href="manifest.webmanifest">
@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Comanda">
+<meta name="apple-mobile-web-app-title" content="Tabacaria Livre">
 <style>
 :root{--bg:#f6f5f2;--card:#fff;--tx:#1c1b19;--mu:#6f6c66;--ac:#0f766e;--ac2:#fff;--bd:#e3e0d9;--rd:#b42318;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141413;--card:#1e1e1c;--tx:#f1efea;--mu:#a09c93;--ac:#2dd4bf;--ac2:#04211d;--bd:#33322e;--rd:#f97066}}
@@ -45,6 +45,7 @@ input,textarea,select{background:color-mix(in srgb,var(--card) var(--inop),trans
 .item{padding:6px 0;border-top:1px solid var(--bd)}
 .q{width:auto;padding:4px 10px}
 .sc{overflow-x:auto}
+.lg{display:block;margin:0 auto;width:min(68vw,280px);height:auto;border-radius:22px;background:#000;box-shadow:0 6px 24px rgba(0,0,0,.35)}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:7px 5px;text-align:right;border-top:1px solid var(--bd);white-space:nowrap}
 th:first-child,td:first-child{text-align:left}
@@ -53,7 +54,7 @@ th{color:var(--mu);font-weight:600;border-top:0}
 </head>
 <body>
 <main>
-<h1>Comanda de entrada e saída</h1>
+<h1 id="ttl">Tabacaria Livre Head Shop</h1>
 <div class="row sp mu" id="who" style="margin-bottom:8px"></div>
 <button id="inst" class="pri" hidden style="width:100%;margin-bottom:8px">Instalar aplicativo</button>
 <div class="mu" id="sst" style="margin-bottom:6px"></div>
@@ -145,7 +146,8 @@ function authAct(a,b){
 document.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target.id&&e.target.id.indexOf('a_')===0){var b=document.querySelector('[data-act="criar"],[data-act="entrar"],[data-act="centrar"]');if(b)b.click()}});
 
 function render(){
-  if(!cur){$('who').innerHTML='';$('tabs').innerHTML='';$('app').innerHTML=authView();return}
+  if(!cur){$('ttl').style.display='none';$('who').innerHTML='';$('tabs').innerHTML='';$('app').innerHTML=authView();return}
+  $('ttl').style.display='';
   $('who').innerHTML='<span>Olá, '+esc(cur.nome)+'</span><button class="q" data-act="sair">Sair</button>';
   var T=[['abertas','Abertas'],['fechadas','Fechadas'],['caixa','Caixa'],['fluxo','Fluxo'],['itens','Itens'],['backup','Backup'],['conta','Conta']];
   if(CLOUD&&!cur.admin)T=T.filter(function(t){return t[0]!=='backup'});
@@ -349,7 +351,9 @@ function adminView(){
   if(rec.length)h+='<div class="card"><b>Bloqueados</b>'+rec.map(function(p){return row(p,bt('pri','adst',p.id,'aprovado','Liberar'))}).join('')+'</div>';
   return h;
 }
-function cloudAuth(){
+function loginHead(){return '<div style="text-align:center;margin:6px 0 14px"><img class="lg" src="logo.webp" alt="Tabacaria Livre Head Shop" width="280" height="298"><div style="margin:12px 0 2px;font-size:22px;font-weight:700">Tabacaria Livre Head Shop</div><div class="mu">Tudo para sua trip · Sistema de comandas</div></div>'}
+function cloudAuth(){return loginHead()+cloudAuth0()}
+function cloudAuth0(){
   if(booting)return '<p class="mu">Carregando...</p>';
   if(wait)return '<div class="card"><b>'+(wait==='recusado'?'Acesso não autorizado':'Aguardando aprovação')+'</b><p class="mu">'+(wait==='recusado'?'O administrador não liberou este cadastro.':'Seu cadastro foi enviado. Quando o administrador aprovar, toque em Verificar novamente.')+'</p><button class="pri" style="width:100%" data-act="cverif">Verificar novamente</button><button style="width:100%;margin-top:8px" data-act="sair">Sair</button></div>';
   return '<div class="card"><b>Entrar</b><p class="mu">Use o mesmo e-mail e senha em todos os aparelhos.</p><input id="a_n" type="email" placeholder="E-mail" autocomplete="username"><input id="a_p" type="password" placeholder="Senha" style="margin-top:8px" autocomplete="current-password"><button class="pri" style="width:100%;margin-top:10px" data-act="centrar">Entrar</button><button style="width:100%;margin-top:8px" data-act="ccriar">Criar conta</button><p class="mu" id="amsg"></p><button class="q" data-act="cesqueci">Esqueci a senha</button></div>';
