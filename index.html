@@ -152,13 +152,13 @@ function render(){
   if(!cur){$('ttl').style.display='none';$('who').innerHTML='';$('tabs').innerHTML='';$('app').innerHTML=authView();return}
   $('ttl').style.display='';
   $('who').innerHTML='<span>Olá, '+esc(cur.nome)+'</span><button class="q" data-act="sair">Sair</button>';
-  var T=[['abertas','Abertas'],['fechadas','Fechadas'],['caixa','Caixa'],['fluxo','Fluxo'],['itens','Itens'],['backup','Backup'],['conta','Conta']];
+  var T=[['abertas','Abertas'],['fechadas','Fechadas'],['caixa','Caixa'],['fluxo','Fluxo'],['itens','Itens'],['leitor','Leitor'],['backup','Backup'],['conta','Conta']];
   if(CLOUD&&!cur.admin)T=T.filter(function(t){return t[0]!=='backup'});
   if(CLOUD&&cur.admin)T.push(['admin','Admin'+(PF.pend?' ('+PF.pend+')':'')]);
   $('tabs').innerHTML=T.map(function(t){return '<button data-act="tab" data-v="'+t[0]+'" class="'+(view===t[0]&&!sel?'on':'')+'">'+t[1]+'</button>'}).join('');
   var h='';
   if(sel&&find(sel))h=detail(find(sel));
-  else{sel=null;h=view==='abertas'?lista(false):view==='fechadas'?lista(true):view==='itens'?itens():view==='caixa'?caixa():view==='fluxo'?fluxo():view==='admin'?adminView():view==='conta'?bgCard()+conta():backup()}
+  else{sel=null;h=view==='abertas'?lista(false):view==='fechadas'?lista(true):view==='itens'?itens():view==='caixa'?caixa():view==='fluxo'?fluxo():view==='admin'?adminView():view==='leitor'?leitorView():view==='conta'?bgCard()+updCard()+conta():backup()}
   $('app').innerHTML=h;
 }
 
@@ -277,7 +277,7 @@ function fluxo(){
 function cname(id){var g=S.cats.filter(function(x){return x.id===id})[0];return g?g.n:'Sem categoria'}
 function itens(){
   var h='<div class="card"><b>Categorias</b><p class="mu">Crie uma categoria para cada tipo de mercadoria (ex.: Bebidas, Porções, Cigarros).</p>'+S.cats.map(function(g){var n=S.cat.filter(function(i){return i.c===g.id}).length;return '<div class="item row sp"><span>'+esc(g.n)+' <span class="mu">'+n+' item(ns)</span></span><span class="row"><button class="q" data-act="edgrp" data-id="'+g.id+'">Editar</button><button class="q dng" data-act="rmgrp" data-id="'+g.id+'">×</button></span></div>'}).join('')+'<div class="row" style="margin-top:10px"><input id="gn" placeholder="Nova categoria"><button class="pri" data-act="novogrp">+</button></div></div>';
-  h+='<div class="card"><b>Novo item</b><div class="row" style="margin-top:8px"><input id="in" placeholder="Nome"><input id="ip" inputmode="decimal" placeholder="Preço" style="max-width:100px"></div><div class="row" style="margin-top:8px"><input id="ib" inputmode="numeric" placeholder="Código de barras (opcional)"><button data-act="scancam">📷</button><button data-act="scanfoto">Foto</button></div><div class="row" style="margin-top:8px"><select id="ic">'+S.cats.map(function(g){return '<option value="'+g.id+'"'+(g.id===lastCat?' selected':'')+'>'+esc(g.n)+'</option>'}).join('')+'</select><button class="pri" data-act="novoitem">Adicionar</button></div></div>';
+  h+='<div class="card"><b>Novo item</b><p class="mu">Para cadastrar com leitor: toque em "Código de barras" e passe o leitor. Também dá para usar a câmera (📷) ou foto.</p><div class="row" style="margin-top:8px"><input id="in" placeholder="Nome"><input id="ip" inputmode="decimal" placeholder="Preço" style="max-width:100px"></div><div class="row" style="margin-top:8px"><input id="ib" inputmode="numeric" placeholder="Código de barras (opcional)"><button data-act="scancam">📷</button><button data-act="scanfoto">Foto</button></div><div class="row" style="margin-top:8px"><select id="ic">'+S.cats.map(function(g){return '<option value="'+g.id+'"'+(g.id===lastCat?' selected':'')+'>'+esc(g.n)+'</option>'}).join('')+'</select><button class="pri" data-act="novoitem">Adicionar</button></div></div>';
   S.cats.forEach(function(g){var its=S.cat.map(function(i,k){return i.c===g.id?'<div class="item row sp"><span>'+esc(i.n)+' <span class="mu">'+money(i.p)+(i.cb?' · '+esc(i.cb):'')+'</span></span><span class="row"><button class="q" data-act="edcat" data-k="'+k+'">Editar</button><button class="q dng" data-act="rmcat" data-k="'+k+'">×</button></span></div>':''}).join('');h+='<div class="card"><b>'+esc(g.n)+'</b>'+(its||'<p class="mu">Nenhum item.</p>')+'</div>'});
   return h;
 }
@@ -301,6 +301,14 @@ document.addEventListener('click',function(e){
   else if(a==='avulso'){var nm=$('cn').value.trim(),p=num($('cp').value);if(!nm)return;c.itens.push({n:nm,p:p,q:1})}
   else if(a==='mais'){c.itens[k].q++}
   else if(a==='menos'){c.itens[k].q--;if(c.itens[k].q<=0)c.itens.splice(k,1)}
+  else if(a==='ltapply'){SC.gap=+b.dataset.gap;SC.end=b.dataset.end;SC.min=Math.max(3,+b.dataset.len||4);saveSC();toast('Ajustes aplicados')}
+  else if(a==='upd'){
+    if(!navigator.onLine){alert('Conecte-se à internet para atualizar.');return}
+    toast('Atualizando...');
+    var go=function(){location.reload()};
+    (navigator.serviceWorker?navigator.serviceWorker.getRegistrations().then(function(rs){return Promise.all(rs.map(function(r){return r.unregister()}))}):Promise.resolve())
+      .then(function(){return window.caches?caches.keys().then(function(ks){return Promise.all(ks.map(function(k){return caches.delete(k)}))}):0}).then(go,go);
+    return}
   else if(a==='cbgo'){var cv0=$('cbin').value;$('cbin').value='';onCode(cv0,true);return}
   else if(a==='scancam'){openScan();return}
   else if(a==='scanfoto'){$('cbfile').click();return}
@@ -385,6 +393,7 @@ async function pull(){
     if(!SY.since||x.atualizado_em>SY.since)SY.since=x.atualizado_em;
     if(l&&(m===undefined||hs(sj(l))!==m))return;
     if(x.apagado){if(l){upLocal(x.tipo,x.id,null);ch=true}delete SY.m[k];return}
+    if(!l&&m!==undefined)return; // exclusao feita aqui e ainda nao enviada: vale a exclusao
     var h=hs(sj(x.dados));
     if(!l||hs(sj(l))!==h){upLocal(x.tipo,x.id,x.dados);ch=true}
     SY.m[k]=h;
@@ -484,13 +493,14 @@ function norm(c){return String(c||'').trim().replace(/^0+/,'')}
 function findCb(code){var n=norm(code);if(!n)return null;return S.cat.filter(function(i){return i.cb&&norm(i.cb)===n})[0]||null}
 function addItem(c,it){var x=c.itens.filter(function(i){return i.n===it.n&&i.p===it.p})[0];if(x)x.q++;else c.itens.push({n:it.n,p:it.p,q:1})}
 function toast(t){var e=$('toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(function(){e.style.display='none'},2200)}
-function beep(){try{var a=new (window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator();o.frequency.value=1000;o.connect(a.destination);o.start();setTimeout(function(){o.stop();a.close()},90)}catch(e){}}
+function beep(){if(!SC.sound)return;try{var a=new (window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator();o.frequency.value=1000;o.connect(a.destination);o.start();setTimeout(function(){o.stop();a.close()},90)}catch(e){}}
 function scanCard(){
   return '<div class="card"><b>C\u00f3digo de barras</b><div class="row" style="margin-top:8px"><input id="cbin" inputmode="numeric" placeholder="Passe o leitor ou digite o c\u00f3digo"><button class="pri" data-act="cbgo">Ok</button></div><div class="row" style="margin-top:8px"><button style="flex:1" data-act="scancam">\U0001F4F7 C\u00e2mera</button><button style="flex:1" data-act="scanfoto">Foto</button></div></div>';
 }
 function onCode(code,fromField){
   code=String(code||'').trim();if(!code||!cur)return;
   var it=findCb(code);
+  if(view==='leitor'&&!sel){showCodeInfo(code);return}
   if(view==='itens'&&!sel){
     if(it){toast('J\u00e1 cadastrado: '+it.n);beep();return}
     var ib=$('ib');
@@ -512,22 +522,62 @@ function onCode(code,fromField){
   if(fromField){var e=$('cbin');if(e)e.focus()}
 }
 /* leitor laser USB/Bluetooth (funciona como teclado) */
+var SC={gap:150,min:4,end:'auto',sound:true},scanIdle=null,LT={t:[],buf:''},ltTimer=null,APPV='13nov-2';
+try{var _c=JSON.parse(localStorage.getItem('comanda_scan_cfg'));if(_c)for(var _k in _c)SC[_k]=_c[_k]}catch(e){}
+function saveSC(){try{localStorage.setItem('comanda_scan_cfg',JSON.stringify(SC))}catch(e){}}
+function showTest(buf,endk,ts){
+  var el=$('ltr');if(!el)return;
+  var g=[];for(var i=1;i<ts.length;i++)g.push(ts[i]-ts[i-1]);
+  var avg=g.length?Math.round(g.reduce(function(a,b){return a+b},0)/g.length):0,mx=g.length?Math.max.apply(null,g):0;
+  var it=findCb(buf),rec=Math.max(150,Math.round(mx*2));
+  el.innerHTML='<div>Código lido: <b>'+esc(buf)+'</b> ('+buf.length+' caracteres)</div><div>Tecla final: <b>'+esc(endk)+'</b></div>'+(g.length?'<div>Velocidade: média '+avg+' ms entre teclas (máx. '+mx+' ms)</div>':'')+'<div>Produto: <b>'+(it?esc(it.n):'ainda não cadastrado')+'</b></div><button class="q" style="margin-top:8px" data-act="ltapply" data-gap="'+rec+'" data-end="'+(endk==='nenhuma'?'time':'auto')+'" data-len="'+Math.max(3,Math.min(buf.length,SC.min))+'">Aplicar ajustes recomendados</button>';
+  beep();
+}
+function showCodeInfo(code){var el=$('ltr');if(!el)return;var it=findCb(code);el.innerHTML='<div>Código lido: <b>'+esc(code)+'</b></div><div>Produto: <b>'+(it?esc(it.n):'ainda não cadastrado')+'</b></div>';beep()}
+function testKey(e){
+  if(e.key==='Enter'||e.key==='Tab'){
+    e.preventDefault();clearTimeout(ltTimer);
+    if(LT.buf)showTest(LT.buf,e.key,LT.t);
+    LT={t:[],buf:''};$('lt').value='';return;
+  }
+  if(e.key&&e.key.length===1){
+    LT.buf+=e.key;LT.t.push(Date.now());
+    clearTimeout(ltTimer);
+    ltTimer=setTimeout(function(){if(LT.buf.length>=3){showTest(LT.buf,'nenhuma',LT.t);LT={t:[],buf:''};var l=$('lt');if(l)l.value=''}},600);
+  }
+}
+function leitorView(){
+  var n=S.cat.filter(function(i){return i.cb}).length;
+  var opt=function(v,t){return '<option value="'+v+'"'+(SC.end===v?' selected':'')+'>'+t+'</option>'};
+  return '<div class="card"><b>Leitor de código de barras</b><p class="mu">Funciona com leitor laser (USB ou Bluetooth), câmera do celular, foto ou digitação. '+n+' produto(s) com código cadastrado.</p><b>Testar o leitor</b><p class="mu">Toque no campo e passe o leitor. O app mostra o que ele envia.</p><input id="lt" inputmode="none" placeholder="Passe o leitor aqui" autocomplete="off"><div class="row" style="margin-top:8px"><button style="flex:1" data-act="scancam">\U0001F4F7 Testar câmera</button><button style="flex:1" data-act="scanfoto">Testar foto</button></div><div id="ltr" class="mu" style="margin-top:10px">Nenhuma leitura ainda.</div></div>'+
+  '<div class="card"><b>Ajustes do leitor</b><p class="mu">Fim do código (tecla que o leitor envia no final)</p><select id="sc_end">'+opt('auto','Automático (Enter ou Tab)')+opt('enter','Enter')+opt('tab','Tab')+opt('time','Nenhuma (detectar por tempo)')+'</select><p class="mu">Tempo máximo entre teclas: <b id="sc_gv">'+SC.gap+' ms</b> (aumente se o leitor for lento ou antigo)</p><input id="sc_gap" type="range" min="50" max="500" step="10" value="'+SC.gap+'"><p class="mu">Tamanho mínimo do código: <b id="sc_lv">'+SC.min+'</b></p><input id="sc_min" type="range" min="3" max="14" step="1" value="'+SC.min+'"><label class="row" style="margin-top:10px"><input id="sc_snd" type="checkbox" style="width:auto"'+(SC.sound?' checked':'')+'> Tocar som ao ler</label></div>'+
+  '<div class="card"><b>Como cadastrar produtos com o código</b><p class="mu">1) Vá em Itens → Novo item. 2) Toque no campo "Código de barras" e passe o leitor (ou use \U0001F4F7 / Foto). 3) Digite nome e preço e toque em Adicionar. Depois, na comanda, é só passar o leitor e o produto entra sozinho.</p><button class="pri" data-act="tab" data-v="itens">Ir para Itens</button></div>';
+}
+function updCard(){return '<div class="card"><b>Atualizar app</b><p class="mu">Versão: '+APPV+'. Se algo novo não apareceu, toque abaixo para baixar a versão mais recente (precisa de internet).</p><button class="pri" data-act="upd">Atualizar agora</button></div>'}
+document.addEventListener('input',function(e){var id=e.target.id;
+  if(id==='sc_gap'){SC.gap=+e.target.value;$('sc_gv').textContent=SC.gap+' ms';saveSC()}
+  else if(id==='sc_min'){SC.min=+e.target.value;$('sc_lv').textContent=SC.min;saveSC()}});
+document.addEventListener('change',function(e){var id=e.target.id;
+  if(id==='sc_end'){SC.end=e.target.value;saveSC()}else if(id==='sc_snd'){SC.sound=e.target.checked;saveSC()}});
 document.addEventListener('keydown',function(e){
   if(!cur)return;
   var t=e.target,id=t&&t.id,isIn=t&&/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
   if(isIn){
+    if(id==='lt'){testKey(e);return}
     if(e.key==='Enter'&&id==='cbin'){e.preventDefault();var v=t.value;t.value='';onCode(v,true)}
     else if(e.key==='Enter'&&id==='ib'){e.preventDefault();var n=$('in');if(n)n.focus()}
     return;
   }
-  var now=Date.now();
-  if(e.key==='Enter'||e.key==='Tab'){
-    if(scanBuf.length>=4){e.preventDefault();var c=scanBuf;scanBuf='';onCode(c)}else scanBuf='';
+  var now=Date.now(),endEnter=(SC.end!=='tab'),endTab=(SC.end!=='enter');
+  if((e.key==='Enter'&&endEnter)||(e.key==='Tab'&&endTab)){
+    if(scanBuf.length>=SC.min){e.preventDefault();clearTimeout(scanIdle);var c=scanBuf;scanBuf='';onCode(c)}else scanBuf='';
     return;
   }
   if(e.key&&e.key.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){
-    if(now-scanT>150)scanBuf='';
+    if(now-scanT>SC.gap)scanBuf='';
     scanBuf+=e.key;scanT=now;
+    clearTimeout(scanIdle);
+    if(SC.end==='time')scanIdle=setTimeout(function(){if(scanBuf.length>=SC.min){var c2=scanBuf;scanBuf='';onCode(c2)}},Math.max(60,Math.round(SC.gap/2)));
   }
 });
 /* camera e foto */
