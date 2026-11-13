@@ -7,6 +7,7 @@
 <script src="config.js"></script>
 <script src="supabase.js"></script>
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
 <meta name="theme-color" content="#0f766e">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -18,6 +19,9 @@
 :root[data-theme="dark"]{--bg:#141413;--card:#1e1e1c;--tx:#f1efea;--mu:#a09c93;--ac:#2dd4bf;--ac2:#04211d;--bd:#33322e;--rd:#f97066}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,Segoe UI,sans-serif}
+:root{--bgop:.12}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:url(logo-bg.webp) center 42%/min(94vw,640px) auto no-repeat;opacity:var(--bgop)}
+main{position:relative;z-index:1}
 main{max-width:640px;margin:0 auto;padding:14px}
 h1{font-size:20px;margin:4px 0 12px}
 .tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}
@@ -29,7 +33,7 @@ button.dng{color:var(--rd)}
 input,textarea,select{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px;width:100%}
 .row{display:flex;gap:8px;align-items:center}
 .row>*{min-width:0}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px;margin-bottom:10px}
+.card{background:color-mix(in srgb,var(--card) 80%,transparent);border:1px solid var(--bd);border-radius:14px;padding:12px;margin-bottom:10px}
 .mu{color:var(--mu);font-size:14px}
 .big{font-size:22px;font-weight:700}
 .sp{justify-content:space-between}
@@ -148,7 +152,7 @@ function render(){
   $('tabs').innerHTML=T.map(function(t){return '<button data-act="tab" data-v="'+t[0]+'" class="'+(view===t[0]&&!sel?'on':'')+'">'+t[1]+'</button>'}).join('');
   var h='';
   if(sel&&find(sel))h=detail(find(sel));
-  else{sel=null;h=view==='abertas'?lista(false):view==='fechadas'?lista(true):view==='itens'?itens():view==='caixa'?caixa():view==='fluxo'?fluxo():view==='admin'?adminView():view==='conta'?conta():backup()}
+  else{sel=null;h=view==='abertas'?lista(false):view==='fechadas'?lista(true):view==='itens'?itens():view==='caixa'?caixa():view==='fluxo'?fluxo():view==='admin'?adminView():view==='conta'?bgCard()+conta():backup()}
   $('app').innerHTML=h;
 }
 
@@ -426,6 +430,9 @@ if(CLOUD){
   document.addEventListener('visibilitychange',function(){if(!document.hidden)sync()});
   window.addEventListener('online',sync);
 }
+(function(){try{var v=localStorage.getItem('comanda_bgop');if(v!==null)document.documentElement.style.setProperty('--bgop',String(+v/100))}catch(e){}})();
+function bgCard(){var v=Math.round((parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--bgop'))||0.12)*100);return '<div class="card"><b>Logo de fundo</b><p class="mu">Transparência da logo no fundo do app (0% esconde).</p><input id="bgr" type="range" min="0" max="40" step="1" value="'+v+'"><div class="mu" id="bgv">'+v+'%</div></div>'}
+document.addEventListener('input',function(e){if(e.target.id==='bgr'){var v=+e.target.value;document.documentElement.style.setProperty('--bgop',String(v/100));$('bgv').textContent=v+'%';try{localStorage.setItem('comanda_bgop',v)}catch(x){}}});
 var dp=null;
 window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();dp=e;$('inst').hidden=false});
 $('inst').addEventListener('click',function(){if(dp){dp.prompt();dp=null;$('inst').hidden=true}});
