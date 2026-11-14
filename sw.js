@@ -1,4 +1,4 @@
-var V='comanda-v11';
+var V='comanda-v12';
 var F=['./','./index.html','./config.js','./supabase.js','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-maskable-512.png','./logo-bg.webp','./logo.webp','./zxing.js','./apple-touch-icon.png'];
 self.addEventListener('install',function(e){e.waitUntil(caches.open(V).then(function(c){return c.addAll(F)}).then(function(){return self.skipWaiting()}))});
 self.addEventListener('activate',function(e){e.waitUntil(caches.keys().then(function(k){return Promise.all(k.filter(function(x){return x!==V}).map(function(x){return caches.delete(x)}))}).then(function(){return self.clients.claim()}))});

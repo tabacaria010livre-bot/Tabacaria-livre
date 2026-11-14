@@ -220,6 +220,24 @@ create trigger registros_touch
   before insert or update on public.registros
   for each row execute function public.registros_touch();
 
+-- 8b) Pedidos: aceite ATÔMICO (só uma pessoa consegue aceitar o mesmo pedido)
+create or replace function public.pedido_aceitar(pid text, quem text)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  if not public.is_aprovado() then raise exception 'Você não tem permissão para isso.'; end if;
+  update public.registros
+     set dados = dados || jsonb_build_object('st', 'aceito', 'ac', quem,
+                                             'at', (extract(epoch from now()) * 1000)::bigint),
+         user_id = auth.uid()
+   where tipo = 'p' and id = pid and apagado = false and dados->>'st' = 'pendente';
+  get diagnostics n = row_count;
+  return n > 0;
+end $$;
+
+revoke all on function public.pedido_aceitar(text, text) from public, anon, authenticated;
+grant execute on function public.pedido_aceitar(text, text) to authenticated;
+
 -- 9) CARGO DE DESENVOLVEDOR (protegido): definido SÓ por aqui, nunca pelo app.
 --    Troque o e-mail se for outra conta e execute novamente.
 update public.perfis
