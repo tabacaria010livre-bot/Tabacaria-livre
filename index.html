@@ -571,14 +571,16 @@ function pedidosView(){
     h+='<div class="card" style="border-color:var(--ac)"><b>Pedidos pendentes ('+pend.length+')</b><p class="mu">Quem estiver no caixa aceita. O pedido entra sozinho na comanda do cliente.</p></div>';
     h+=pend.map(function(o){return '<div class="card"><div class="row sp"><b class="big">'+esc(o.nome||'Cliente')+'</b><span class="mu">'+hh(o.t)+'</span></div>'+o.itens.map(function(i){return '<div class="item">'+i.q+'× '+esc(i.n)+' <span class="mu">'+money(i.p*i.q)+'</span></div>'}).join('')+(o.obs?'<p class="mu">Obs.: '+esc(o.obs)+'</p>':'')+'<p class="mu">Enviado por '+esc(quem(o))+(o.cm?'':' · novo cliente')+'</p><div class="row"><button class="pri" style="flex:1" data-act="ped_ok" data-id="'+o.id+'">Aceitar</button><button class="dng" style="flex:1" data-act="ped_no" data-id="'+o.id+'">Recusar</button></div></div>'}).join('');
   }else h+='<p class="mu">Nenhum pedido pendente.</p>';
+  var hist=(S.ped||[]).filter(function(o){return o.st!=='pendente'}).sort(function(a,b){return b.t-a.t}).slice(0,5);
+  h+='<div class="card"><b>Pedidos recentes</b>'+(hist.length?hist.map(function(o){return '<div class="item"><div class="row sp"><span>'+(o.st==='aceito'?'✅':'❌')+' '+esc(o.nome||'')+'</span><span class="mu">'+hh(o.t)+'</span></div><div class="mu">'+esc(resumoPed(o))+' · '+(o.st==='aceito'?'aceito por '+esc(nomeCurto(o.ac)):'recusado por '+esc(nomeCurto(o.rec)))+'</div></div>'}).join(''):'<p class="mu">Nada ainda.</p>')+'<label class="row" style="margin-top:10px"><input id="pal" type="checkbox" style="width:auto"'+(PA.on?' checked':'')+'> Avisar neste aparelho quando chegar pedido (som e vibração)</label></div>';
   var abertas=S.c.filter(function(c){return !c.saida});
+  var nq=0,nt=0;PC.itens.forEach(function(i){nq+=i.q;nt+=i.p*i.q});
   h+='<div class="card" id="cat"><b>Lançar pedido</b><p class="mu">Está fora do caixa? Lance aqui e quem estiver dentro aceita.</p><select id="pcm" style="margin-top:8px"><option value="">Selecione o cliente (comanda)...</option>'+abertas.map(function(c){return '<option value="'+c.id+'"'+(PC.cm===c.id?' selected':'')+'>'+esc(c.nome)+'</option>'}).join('')+'<option value="__novo"'+(PC.cm==='__novo'?' selected':'')+'>➕ Novo cliente...</option></select>'+
     (PC.cm==='__novo'?'<input id="pnm" placeholder="Nome ou número do cliente" value="'+esc(PC.nome)+'" style="margin-top:8px">':'')+
-    (PC.itens.length?PC.itens.map(function(i,k){return '<div class="item row sp"><span>'+esc(i.n)+' <span class="mu">'+money(i.p)+'</span></span><span class="row"><button class="q" data-act="pped_menos" data-k="'+k+'">−</button><b>'+i.q+'</b><button class="q" data-act="pped_mais" data-k="'+k+'">+</button></span></div>'}).join(''):'<p class="mu">Toque nos produtos abaixo para montar o pedido.</p>')+
-    catList('pped_add')+'<input id="pob" placeholder="Observação (opcional)" value="'+esc(PC.obs)+'" style="margin-top:10px"><button class="pri" style="width:100%;margin-top:10px" data-act="pped_send">Enviar pedido</button></div>';
-  var hist=(S.ped||[]).filter(function(o){return o.st!=='pendente'}).sort(function(a,b){return b.t-a.t}).slice(0,15);
-  h+='<div class="card"><b>Pedidos recentes</b>'+(hist.length?hist.map(function(o){return '<div class="item"><div class="row sp"><span>'+(o.st==='aceito'?'✅':'❌')+' '+esc(o.nome||'')+'</span><span class="mu">'+hh(o.t)+'</span></div><div class="mu">'+esc(resumoPed(o))+' · '+(o.st==='aceito'?'aceito por '+esc(nomeCurto(o.ac)):'recusado por '+esc(nomeCurto(o.rec)))+'</div></div>'}).join(''):'<p class="mu">Nada ainda.</p>')+'</div>';
-  h+='<div class="card"><label class="row"><input id="pal" type="checkbox" style="width:auto"'+(PA.on?' checked':'')+'> Avisar neste aparelho quando chegar pedido (som e vibração)</label></div>';
+    (PC.itens.length?PC.itens.map(function(i,k){return '<div class="item row sp"><span>'+esc(i.n)+' <span class="mu">'+money(i.p)+'</span></span><span class="row"><button class="q" data-act="pped_menos" data-k="'+k+'">−</button><b>'+i.q+'</b><button class="q" data-act="pped_mais" data-k="'+k+'">+</button></span></div>'}).join(''):'<p class="mu">Toque nos produtos lá embaixo para montar o pedido.</p>')+
+    '<input id="pob" placeholder="Observação (opcional)" value="'+esc(PC.obs)+'" style="margin-top:10px">'+
+    '<div class="row sp" style="position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0;margin-top:8px"><span><b>🛒 '+nq+' item(ns)</b> · '+money(nt)+'</span><button class="pri" data-act="pped_send">Enviar pedido</button></div>'+
+    '<p class="mu" style="margin-top:8px">Produtos</p>'+catList('pped_add')+'</div>';
   return h;
 }
 function loginHead(){return '<div style="text-align:center;margin:6px 0 14px"><img class="lg" src="logo.webp" alt="Tabacaria Livre Head Shop" width="280" height="298"><div style="margin:12px 0 2px;font-size:22px;font-weight:700">Tabacaria Livre Head Shop</div><div class="mu">Tudo para sua trip · Sistema de comandas</div></div>'}
@@ -737,7 +739,7 @@ function onCode(code,fromField){
   if(fromField){var e=$('cbin');if(e)e.focus()}
 }
 /* leitor laser USB/Bluetooth (funciona como teclado) */
-var SC={gap:150,min:4,end:'auto',sound:true},scanIdle=null,LT={t:[],buf:''},ltTimer=null,APPV='14nov-2';
+var SC={gap:150,min:4,end:'auto',sound:true},scanIdle=null,LT={t:[],buf:''},ltTimer=null,APPV='14nov-3';
 try{var _c=JSON.parse(localStorage.getItem('comanda_scan_cfg'));if(_c)for(var _k in _c)SC[_k]=_c[_k]}catch(e){}
 function saveSC(){try{localStorage.setItem('comanda_scan_cfg',JSON.stringify(SC))}catch(e){}}
 function showTest(buf,endk,ts){
