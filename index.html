@@ -45,6 +45,10 @@ input,textarea,select{background:color-mix(in srgb,var(--card) var(--inop),trans
 .item{padding:6px 0;border-top:1px solid var(--bd)}
 .q{width:auto;padding:4px 10px}
 .sc{overflow-x:auto}
+details.card summary{cursor:pointer;list-style:none}
+details.card summary::-webkit-details-marker{display:none}
+details.card summary::after{content:"\25BE";float:right;color:var(--mu)}
+details.card[open] summary::after{content:"\25B4"}
 #toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#111;color:#fff;padding:10px 16px;border-radius:999px;z-index:60;display:none;max-width:90vw;text-align:center;font-size:15px}
 .lg{display:block;margin:0 auto;width:min(68vw,280px);height:auto;border-radius:22px;background:#000;box-shadow:0 6px 24px rgba(0,0,0,.35)}
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -193,16 +197,35 @@ function detail(c){
   if(descv(c)>0)h+='<div class="item row sp mu"><span>Subtotal</span><span>'+money(sub(c))+'</span></div><div class="item row sp"><span>Desconto</span><b>−'+money(descv(c))+'</b></div>';
   h+='</div>';
   if(open){
-    if(!paying)h+=scanCard();
-    h+='<div class="card"><b>Adicionar consumo</b>'+S.cats.map(function(g){var its=S.cat.map(function(i,k){return i.c===g.id?'<button data-act="add" data-k="'+k+'">'+esc(i.n)+' · '+money(i.p)+'</button>':''}).join('');return its?'<div class="mu" style="margin-top:8px">'+esc(g.n)+'</div><div class="chips">'+its+'</div>':''}).join('');
-    h+='<div class="row"><input id="cn" placeholder="Item avulso"><input id="cp" inputmode="decimal" placeholder="Preço" style="max-width:100px"><button data-act="avulso">+</button></div></div>';
-    if(!paying)h+=descCard(c);
-    h+=paying==='din'?cashView(c):paying?'<div class="card"><b>Forma de pagamento</b><p class="mu">Total '+money(total(c))+'</p><div class="row"><button class="pri" style="flex:1" data-act="pagar" data-m="pix">Pix</button><button class="pri" style="flex:1" data-act="pagar" data-m="car">Cartão</button><button class="pri" style="flex:1" data-act="cash">Dinheiro</button></div><button style="width:100%;margin-top:8px" data-act="cancpag">Cancelar</button></div>':'<button class="pri" style="width:100%;margin-bottom:8px" data-act="saida">Dar saída e fechar ('+money(total(c))+')</button>';
+    if(paying)h+=payView(c);
+    else{
+      h+='<button class="pri" style="width:100%;margin-bottom:8px" data-act="saida">Dar saída e fechar ('+money(total(c))+')</button>';
+      h+=avulsoCard()+descCard(c)+scanCard();
+    }
+    h+=catCard();
   }else h+='<div class="card"><b>Forma de pagamento</b><div class="row" style="margin-top:8px">'+['pix','car','din'].map(function(m){return '<button class="'+(c.pg===m?'pri':'')+'" style="flex:1" data-act="setpg" data-m="'+m+'">'+FP[m]+'</button>'}).join('')+'</div></div><button style="width:100%;margin-bottom:8px" data-act="reabrir">Reabrir comanda</button>';
   h+='<button class="dng" style="width:100%" data-act="excluir">Excluir comanda</button>';
   return h;
 }
 
+function payView(c){
+  return paying==='din'?cashView(c):'<div class="card"><b>Forma de pagamento</b><p class="mu">Total '+money(total(c))+'</p><div class="row"><button class="pri" style="flex:1" data-act="pagar" data-m="pix">Pix</button><button class="pri" style="flex:1" data-act="pagar" data-m="car">Cartão</button><button class="pri" style="flex:1" data-act="cash">Dinheiro</button></div><button style="width:100%;margin-top:8px" data-act="cancpag">Cancelar</button></div>';
+}
+function avulsoCard(){
+  return '<details class="card"><summary><b>Item avulso</b></summary><div class="row" style="margin-top:8px"><input id="cn" placeholder="Nome do item"><input id="cp" inputmode="decimal" placeholder="Preço" style="max-width:100px"><button class="pri" data-act="avulso">+</button></div></details>';
+}
+function catCard(){
+  return '<div class="card" id="cat"><b>Adicionar consumo</b><input id="bq" placeholder="Buscar produto..." autocomplete="off" style="margin-top:8px">'+S.cats.map(function(g){
+    var its=S.cat.map(function(i,k){return i.c===g.id?'<button data-act="add" data-k="'+k+'" data-n="'+esc(i.n.toLowerCase())+'">'+esc(i.n)+' · '+money(i.p)+'</button>':''}).join('');
+    return its?'<div class="mu gh" style="margin-top:8px">'+esc(g.n)+'</div><div class="chips">'+its+'</div>':'';
+  }).join('')+'</div>';
+}
+document.addEventListener('input',function(e){
+  if(e.target.id!=='bq')return;
+  var q=e.target.value.toLowerCase().trim();
+  document.querySelectorAll('#cat [data-n]').forEach(function(b){b.style.display=(!q||b.dataset.n.indexOf(q)>-1)?'':'none'});
+  document.querySelectorAll('#cat .gh').forEach(function(h){var c=h.nextElementSibling,any=false;if(c)c.querySelectorAll('[data-n]').forEach(function(b){if(b.style.display!=='none')any=true});h.style.display=any?'':'none';if(c)c.style.display=any?'':'none'});
+});
 function isHoje(t){return new Date(t).toDateString()===new Date().toDateString()}
 function caixa(){
   var rec=S.c.filter(function(c){return c.saida&&isHoje(c.saida)}).reduce(function(a,c){return a+total(c)},0);
@@ -244,7 +267,7 @@ function cashView(c){
 }
 function descCard(c){
   var d=c.d&&c.d.n?c.d:null;
-  return '<div class="card"><b>Desconto <span class="mu">(opcional)</span></b>'+(d?'<p class="mu">Aplicado: '+(d.t==='p'?d.n+'%':money(d.n))+' = −'+money(descv(c))+'</p>':'')+'<div class="row" style="margin-top:8px"><select id="dt" style="max-width:90px"><option value="v">R$</option><option value="p"'+(d&&d.t==='p'?' selected':'')+'>%</option></select><input id="dn" inputmode="decimal" placeholder="Valor do desconto"><button data-act="descon">Aplicar</button></div>'+(d?'<button class="q dng" style="margin-top:8px" data-act="descoff">Remover desconto</button>':'')+'</div>';
+  return '<details class="card"'+(d?' open':'')+'><summary><b>Desconto</b> <span class="mu">(opcional)'+(d?' · aplicado: −'+money(descv(c)):'')+'</span></summary>'+(d?'<p class="mu">Aplicado: '+(d.t==='p'?d.n+'%':money(d.n))+' = −'+money(descv(c))+'</p>':'')+'<div class="row" style="margin-top:8px"><select id="dt" style="max-width:90px"><option value="v">R$</option><option value="p"'+(d&&d.t==='p'?' selected':'')+'>%</option></select><input id="dn" inputmode="decimal" placeholder="Valor do desconto"><button data-act="descon">Aplicar</button></div>'+(d?'<button class="q dng" style="margin-top:8px" data-act="descoff">Remover desconto</button>':'')+'</details>';
 }
 var fy=new Date().getFullYear();
 var MES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -633,7 +656,7 @@ function onCode(code,fromField){
   if(fromField){var e=$('cbin');if(e)e.focus()}
 }
 /* leitor laser USB/Bluetooth (funciona como teclado) */
-var SC={gap:150,min:4,end:'auto',sound:true},scanIdle=null,LT={t:[],buf:''},ltTimer=null,APPV='13nov-4';
+var SC={gap:150,min:4,end:'auto',sound:true},scanIdle=null,LT={t:[],buf:''},ltTimer=null,APPV='14nov-1';
 try{var _c=JSON.parse(localStorage.getItem('comanda_scan_cfg'));if(_c)for(var _k in _c)SC[_k]=_c[_k]}catch(e){}
 function saveSC(){try{localStorage.setItem('comanda_scan_cfg',JSON.stringify(SC))}catch(e){}}
 function showTest(buf,endk,ts){
